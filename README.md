@@ -1,6 +1,6 @@
-# Hermes Desktop Remote
+# RHermes
 
-This repository contains only the Electron Desktop client and its shared
+RHermes is a separately branded Electron Desktop client. This repository contains its shared
 TypeScript transport library from [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
 It is intended to connect to an already-running remote Hermes Gateway; it does
 not contain the Python agent, CLI, TUI, web app, gateway implementation, or
