@@ -19,7 +19,8 @@ branches, currently `codex/remote-first-desktop`.
 
 ## Development
 
-Requires Node.js 20.19 or newer.
+Requires Node.js 22.22.2. The project pins this version in `.vfox.toml`;
+activate vfox in your shell before running the commands below.
 
 ```bash
 npm install
