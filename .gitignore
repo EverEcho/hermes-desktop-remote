@@ -1,0 +1,11 @@
+node_modules/
+apps/*/node_modules/
+apps/desktop/dist/
+apps/desktop/release/
+apps/desktop/.vite/
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+.DS_Store
+.env
+.env.*
+!.env.example
