@@ -1,4 +1,4 @@
-# Hermes Desktop — Remote-first fork
+# Hermes Desktop Remote
 
 This repository contains only the Electron Desktop client and its shared
 TypeScript transport library from [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).

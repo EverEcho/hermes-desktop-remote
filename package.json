@@ -1,5 +1,5 @@
 {
-  "name": "hermes-desktop-remote-first",
+  "name": "hermes-desktop-remote",
   "version": "0.1.0",
   "private": true,
   "description": "A Desktop-only Hermes client fork with remote Gateway as a first-class mode.",
