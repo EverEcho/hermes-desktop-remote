@@ -1,21 +1,20 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    execFile(command, args, (error, stdout, stderr) => {
-      if (error) {
-        reject(
-          new Error(
-            `${command} ${args.join(' ')} failed: ${stderr?.trim() || stdout?.trim() || error.message}`
-          )
-        )
-        return
+    console.log(`[notarize] Running: ${command} ${args.join(' ')}`)
+    const child = spawn(command, args, { stdio: 'inherit' })
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve()
+      } else {
+        reject(new Error(`${command} ${args.join(' ')} failed with exit code ${code}`))
       }
-      resolve({ stdout, stderr })
     })
+    child.on('error', (err) => reject(err))
   })
 }
 
