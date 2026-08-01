@@ -1,4 +1,4 @@
-# Hermes Desktop ☤
+# RHermes Desktop ☤
 
 <p align="center">
   <a href="https://github.com/NousResearch/hermes-agent/releases"><img src="https://img.shields.io/badge/Download-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-FFD700?style=for-the-badge" alt="Download"></a>
@@ -185,7 +185,7 @@ rm "$HOME/.hermes/hermes-agent/.hermes-bootstrap-complete"
 # Rebuild a broken Python venv
 rm -rf "$HOME/.hermes/hermes-agent/venv"
 # Reset a stuck macOS microphone prompt (macOS only)
-tccutil reset Microphone cn.13bit.rhermes
+tccutil reset Microphone com.nousresearch.hermes
 ```
 
 **Windows (PowerShell):**

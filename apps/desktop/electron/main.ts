@@ -952,7 +952,7 @@ app.setName(APP_NAME)
 // Windows toast notifications silently no-op unless an AppUserModelID is set:
 // `new Notification().show()` returns without error and nothing appears. The
 // AUMID must match the installed Start Menu shortcut's AUMID, which
-// electron-builder derives from the build `appId` (cn.13bit.rhermes) —
+// electron-builder derives from the build `appId` (com.nousresearch.hermes) —
 // keep this string in sync with package.json `build.appId`. macOS/Linux don't
 // need this, so gate it on Windows. (Fixes: desktop approval/turn notifications
 // never firing on Windows.)
@@ -5155,6 +5155,20 @@ function sendClosePreviewRequested() {
   webContents.send('hermes:close-preview-requested')
 }
 
+function sendOpenFolderRequested() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  const webContents = mainWindow.webContents
+
+  if (!webContents || webContents.isDestroyed()) {
+    return
+  }
+
+  webContents.send('hermes:open-folder-requested')
+}
+
 // Tell the renderer the machine just woke. Sleep silently drops the
 // renderer's WebSocket to the local backend; the renderer reconnects on this
 // signal so the chat composer doesn't stay stuck on "Starting Hermes...".
@@ -5272,6 +5286,10 @@ function buildApplicationMenu() {
       // a menu accelerator would fight the rebind panel and (on macOS) be
       // swallowed before the renderer sees it. Here purely for discoverability.
       { click: () => createInstanceWindow(), label: 'New Window' },
+      // Same no-accelerator rationale: ⌘O is the rebindable renderer keybind
+      // (workspace.openFolder). Clicking runs the same open-folder-as-project
+      // flow through the renderer.
+      { click: () => sendOpenFolderRequested(), label: 'Open Folder…' },
       { type: 'separator' },
       IS_MAC
         ? {
@@ -5624,8 +5642,12 @@ function installContextMenu(window) {
       }
     }
 
+    // Bare right-click on non-editable, non-selected, non-media content (a pane
+    // body, the sidebar, chrome): the renderer's own context menus own those
+    // surfaces, and anywhere without one shows nothing — not a lone, useless
+    // "Select All" from the native fallback.
     if (!template.length) {
-      template.push({ role: 'selectAll' })
+      return
     }
 
     Menu.buildFromTemplate(template).popup({ window })
@@ -11509,7 +11531,7 @@ ipcMain.handle('hermes:vscode-theme:fetch', async (_event, id) => fetchMarketpla
 ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
 
 // ---------------------------------------------------------------------------
-// rhermes:// deep links (e.g. rhermes://blueprint/morning-brief?time=08:00).
+// hermes:// deep links (e.g. hermes://blueprint/morning-brief?time=08:00).
 // A docs/dashboard "Send to App" button opens this URL; we route it into the
 // running app's chat composer. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
@@ -11541,7 +11563,7 @@ function handleDeepLink(url) {
     return
   }
 
-  // rhermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
+  // hermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
   const kind = parsed.hostname || ''
   const name = decodeURIComponent((parsed.pathname || '').replace(/^\//, ''))
   const params = {}
@@ -11601,7 +11623,7 @@ function registerDeepLinkProtocol() {
 }
 
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
-// second-instance argv. Without the lock a second `rhermes://` launch spawns a
+// second-instance argv. Without the lock a second `hermes://` launch spawns a
 // whole new app instead of routing into the running one.
 const _gotSingleInstanceLock = app.requestSingleInstanceLock()
 
@@ -11663,7 +11685,7 @@ app.whenReady().then(() => {
   applyQuickEntrySettings(readQuickEntrySettings())
   createWindow()
 
-  // Win/Linux cold start: the launching rhermes:// URL is in our own argv.
+  // Win/Linux cold start: the launching hermes:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)
 
   if (_coldStartLink) {
