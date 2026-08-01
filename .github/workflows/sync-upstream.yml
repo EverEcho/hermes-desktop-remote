@@ -31,6 +31,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Add upstream remote & sync
+        id: sync
         run: |
           git remote add upstream https://github.com/NousResearch/hermes-agent.git || true
           chmod +x ./scripts/sync-upstream-desktop.sh
@@ -40,8 +41,8 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(sync): import upstream Desktop changes"
-          title: "chore(sync): import upstream Desktop changes"
+          commit-message: ${{ steps.sync.outputs.commit_title || 'chore(sync): import upstream Desktop changes' }}
+          title: ${{ steps.sync.outputs.commit_title || 'chore(sync): import upstream Desktop changes' }}
           body-path: SYNC_SUMMARY.md
           branch: "chore/sync-upstream"
           delete-branch: true

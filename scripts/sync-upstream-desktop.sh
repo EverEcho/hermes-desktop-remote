@@ -20,6 +20,17 @@ git diff --name-only "$FORK_BASE" HEAD -- apps/desktop apps/shared | sort > "$TM
 
 git fetch upstream main
 
+# Get upstream target commit SHA and date
+UPSTREAM_SHA=$(git rev-parse --short upstream/main)
+UPSTREAM_DATE=$(git log -1 --format="%cd" --date=short upstream/main 2>/dev/null || echo "")
+COMMIT_TITLE="chore(sync): import upstream Desktop changes (upstream@$UPSTREAM_SHA)"
+
+# Output to GitHub Actions environment if available
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
+  echo "commit_title=$COMMIT_TITLE" >> "$GITHUB_OUTPUT"
+fi
+
 # Get recent upstream commit log for desktop & shared
 UPSTREAM_LOGS=$(git log -n 15 --format="- %h %s (%cr)" upstream/main -- apps/desktop apps/shared 2>/dev/null || echo "- Unable to fetch commit log")
 
@@ -43,8 +54,9 @@ CONFLICTS=$(comm -12 "$TMP_LOCAL" "$TMP_UPSTREAM" 2>/dev/null | grep -vE '(packa
 cat << EOF > SYNC_SUMMARY.md
 ## 🔄 Upstream Sync Summary
 
-Automated sync from \`NousResearch/hermes-agent:main\` for \`apps/desktop\` and \`apps/shared\`.
-RHermes fork branding has been automatically re-applied.
+- **Upstream Target Commit**: [\`$UPSTREAM_SHA\`](https://github.com/NousResearch/hermes-agent/commit/$UPSTREAM_SHA) ($UPSTREAM_DATE)
+- **Synced Directories**: \`apps/desktop\`, \`apps/shared\`
+- **Branding Status**: RHermes fork branding auto-applied
 
 ### 📝 Recent Upstream Commits
 $UPSTREAM_LOGS
@@ -77,4 +89,4 @@ echo
 echo "Review the diff, test, then commit:"
 echo "  git diff --stat"
 echo "  git add apps/desktop apps/shared package-lock.json"
-echo "  git commit -m 'chore(sync): import upstream Desktop changes'"
+echo "  git commit -m '$COMMIT_TITLE'"
