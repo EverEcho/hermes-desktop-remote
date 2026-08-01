@@ -37,6 +37,8 @@ jobs:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Print each nested component as @electron/osx-sign passes it to codesign.
+          DEBUG: electron-osx-sign*
         run: |
           if [ -n "$APPLE_API_KEY_CONTENT" ]; then
             KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
