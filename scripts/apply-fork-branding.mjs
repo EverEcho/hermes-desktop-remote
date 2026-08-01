@@ -104,4 +104,20 @@ try {
   console.error('  ✗ Failed to patch desktop README.md:', e.message)
 }
 
+// 5. Patch Release Notes URL in apps/desktop/src/app/settings/about-settings.tsx
+const aboutSettingsPath = resolve(rootDir, 'apps/desktop/src/app/settings/about-settings.tsx')
+try {
+  let content = readFileSync(aboutSettingsPath, 'utf8')
+  if (content.includes('https://github.com/NousResearch/hermes-agent/releases')) {
+    content = content.replace(
+      'https://github.com/NousResearch/hermes-agent/releases',
+      'https://github.com/EverEcho/hermes-desktop-remote/releases'
+    )
+    writeFileSync(aboutSettingsPath, content, 'utf8')
+    console.log('  ✓ apps/desktop/src/app/settings/about-settings.tsx patched')
+  }
+} catch (e) {
+  console.error('  ✗ Failed to patch about-settings.tsx:', e.message)
+}
+
 console.log('✨ RHermes branding successfully re-applied!')
