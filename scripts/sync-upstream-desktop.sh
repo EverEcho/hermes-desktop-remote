@@ -23,22 +23,28 @@ git fetch upstream main
 # Get recent upstream commit log for desktop & shared
 UPSTREAM_LOGS=$(git log -n 15 --format="- %h %s (%cr)" upstream/main -- apps/desktop apps/shared 2>/dev/null || echo "- Unable to fetch commit log")
 
-# Execute sync
+# 1. Restore upstream code
 git restore --source=upstream/main -- apps/desktop apps/shared
+
+# 2. Automatically re-apply RHermes fork branding & customizations
+node ./scripts/apply-fork-branding.mjs
+
+# 3. Update package-lock.json
 npm install --package-lock-only --ignore-scripts --legacy-peer-deps
 
 # Get list of updated files & diff stats
 git diff --name-only HEAD -- apps/desktop apps/shared | sort > "$TMP_UPSTREAM" || true
 DIFF_STAT=$(git diff --stat HEAD -- apps/desktop apps/shared package-lock.json || true)
 
-# Find intersection (files modified locally AND updated by upstream)
-CONFLICTS=$(comm -12 "$TMP_LOCAL" "$TMP_UPSTREAM" 2>/dev/null || true)
+# Find intersection (files modified locally AND updated by upstream, excluding auto-patched files)
+CONFLICTS=$(comm -12 "$TMP_LOCAL" "$TMP_UPSTREAM" 2>/dev/null | grep -vE '(package\.json|set-exe-identity\.mjs|electron/main\.ts|README\.md)' || true)
 
 # Generate SYNC_SUMMARY.md for PR body / log inspection
 cat << EOF > SYNC_SUMMARY.md
 ## 🔄 Upstream Sync Summary
 
 Automated sync from \`NousResearch/hermes-agent:main\` for \`apps/desktop\` and \`apps/shared\`.
+RHermes fork branding has been automatically re-applied.
 
 ### 📝 Recent Upstream Commits
 $UPSTREAM_LOGS
@@ -53,14 +59,14 @@ EOF
 
 if [ -n "$CONFLICTS" ]; then
   cat << EOF >> SYNC_SUMMARY.md
-> **Warning**: The following files contain local customizations AND were updated by upstream:
+> **Warning**: The following files contain unhandled local customizations AND were updated by upstream:
 $(echo "$CONFLICTS" | sed 's/^/* /')
 
 *Please review differences in these files carefully.*
 EOF
 else
   cat << EOF >> SYNC_SUMMARY.md
-✅ **No potential file conflicts detected.**
+✅ **All upstream changes merged smoothly. Fork branding auto-patched with 0 conflicts.**
 EOF
 fi
 

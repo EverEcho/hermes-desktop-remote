@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Configure Git identity
         run: |
@@ -37,7 +37,7 @@ jobs:
           ./scripts/sync-upstream-desktop.sh
 
       - name: Create Pull Request if changes exist
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(sync): import upstream Desktop changes"
