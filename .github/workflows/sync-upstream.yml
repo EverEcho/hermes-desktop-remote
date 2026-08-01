@@ -41,8 +41,8 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: ${{ steps.sync.outputs.commit_title || 'chore(sync): import upstream Desktop changes' }}
-          title: ${{ steps.sync.outputs.commit_title || 'chore(sync): import upstream Desktop changes' }}
+          commit-message: ${{ steps.sync.outputs.commit_title }}
+          title: ${{ steps.sync.outputs.commit_title }}
           body-path: SYNC_SUMMARY.md
           branch: "chore/sync-upstream"
           delete-branch: true
