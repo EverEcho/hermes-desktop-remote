@@ -150,6 +150,7 @@ import {
   tokenNeedsRefresh
 } from './native-oauth'
 import { runNativeLogin } from './native-oauth-login'
+import { loadNativeTokenSet, type NativeTokenStoreIo, persistNativeTokenSet } from './native-token-store'
 import { serializeJsonBody, setJsonRequestHeaders } from './oauth-net-request'
 import { createKeepAwake } from './power-save'
 import { FirstRunSetupResetError, runPrimaryBackendStartup } from './primary-backend-startup'
@@ -183,6 +184,7 @@ import {
   redactSecrets,
   SshConnection
 } from './ssh-connection'
+import { createStreamThrottle } from './stream-throttle'
 import { nativeOverlayWidth as computeNativeOverlayWidth, macTitleBarOverlayHeight } from './titlebar-overlay-width'
 import { resolveBehindCount, shouldCountCommits } from './update-count'
 import { waitForUpdateClearance } from './update-gate'
@@ -421,18 +423,24 @@ if (IS_WINDOWS) {
 
 ipcMain.handle('hermes:get-remote-display-reason', () => REMOTE_DISPLAY_REASON)
 
-// Keep the renderer running at full speed while the window is in the background
-// or occluded. The chat transcript streams to screen through a bounded timer
-// flush; Chromium clamps timers for backgrounded/occluded renderers, so without
-// these the live answer stalls
-// whenever the window loses focus (switching to your editor mid-turn, detached
-// devtools, another window covering it) and only paints on refocus or refresh.
-// `backgroundThrottling: false` on the BrowserWindow covers the blurred case;
-// these process-level switches additionally stop Chromium from backgrounding or
-// occlusion-throttling the renderer. Must run before app `ready`.
+// Keep the renderer's PROCESS priority normal while its windows are hidden —
+// a deprioritized renderer streams a live answer visibly slower once the
+// window is minimized. This switch only affects scheduling priority; it does
+// not exempt timers from throttling and costs nothing at idle.
+//
+// The timer/rAF throttling story is deliberately NOT handled here anymore.
+// The old process-wide `disable-background-timer-throttling` /
+// `disable-backgrounding-occluded-windows` switches (plus a static
+// `backgroundThrottling: false` on every chat window) pinned every renderer's
+// `document.visibilityState` to 'visible' forever — which silently turned all
+// the renderer's visibility-gated backstop polls and clock ticks into
+// always-on timers. A completely idle, minimized Hermes burned ~20% CPU
+// around the clock. Throttling is now a runtime dial scoped to streaming:
+// see createStreamThrottle() — chat windows are unthrottled while any turn is
+// in flight (so a live answer keeps painting while blurred, occluded, or
+// minimized, exactly as before) and return to Chromium's default throttling
+// once the work settles.
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
-app.commandLine.appendSwitch('disable-background-timer-throttling')
 
 const SOURCE_REPO_ROOT = path.resolve(APP_ROOT, '../..')
 
@@ -659,7 +667,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME || 'RHermes'
+const APP_NAME = process.env.HERMES_DESKTOP_APP_NAME || 'Hermes'
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
 
@@ -952,12 +960,12 @@ app.setName(APP_NAME)
 // Windows toast notifications silently no-op unless an AppUserModelID is set:
 // `new Notification().show()` returns without error and nothing appears. The
 // AUMID must match the installed Start Menu shortcut's AUMID, which
-// electron-builder derives from the build `appId` (cn.13bit.rhermes) —
+// electron-builder derives from the build `appId` (com.nousresearch.hermes) —
 // keep this string in sync with package.json `build.appId`. macOS/Linux don't
 // need this, so gate it on Windows. (Fixes: desktop approval/turn notifications
 // never firing on Windows.)
 if (IS_WINDOWS) {
-  app.setAppUserModelId('cn.13bit.rhermes')
+  app.setAppUserModelId('com.nousresearch.hermes')
 }
 
 // Seed the native About panel with the live Hermes version. This is refreshed
@@ -967,7 +975,7 @@ if (IS_WINDOWS) {
 app.setAboutPanelOptions({
   applicationName: APP_NAME,
   applicationVersion: resolveHermesVersion(),
-  copyright: 'Copyright © 2026 13bit'
+  copyright: 'Copyright © 2026 Nous Research'
 })
 
 // Custom scheme for streaming local media (video/audio) into the renderer.
@@ -5155,6 +5163,20 @@ function sendClosePreviewRequested() {
   webContents.send('hermes:close-preview-requested')
 }
 
+function sendOpenFolderRequested() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  const webContents = mainWindow.webContents
+
+  if (!webContents || webContents.isDestroyed()) {
+    return
+  }
+
+  webContents.send('hermes:open-folder-requested')
+}
+
 // Tell the renderer the machine just woke. Sleep silently drops the
 // renderer's WebSocket to the local backend; the renderer reconnects on this
 // signal so the chat composer doesn't stay stuck on "Starting Hermes...".
@@ -5174,6 +5196,31 @@ function sendPowerResume() {
 
 let powerResumeRegistered = false
 
+// Mirror of powerMonitor's AC/battery state, broadcast to every window so
+// renderer backstop polls can slow down on battery (see store/power.ts).
+// `null` until the first powerMonitor read after app ready.
+let onBatteryPower: boolean | null = null
+
+// Renderer-side battery gating seeds from this and stays current via the
+// 'hermes:power-battery' push below.
+ipcMain.handle('hermes:power-battery:get', () => onBatteryPower === true)
+
+function broadcastBatteryState(next: boolean) {
+  if (onBatteryPower === next) {
+    return
+  }
+
+  onBatteryPower = next
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    const { webContents } = win
+
+    if (webContents && !webContents.isDestroyed()) {
+      webContents.send('hermes:power-battery', next)
+    }
+  }
+}
+
 function registerPowerResumeListeners() {
   if (powerResumeRegistered) {
     return
@@ -5186,6 +5233,9 @@ function registerPowerResumeListeners() {
     // full suspend. Either can drop an idle socket.
     powerMonitor.on('resume', sendPowerResume)
     powerMonitor.on('unlock-screen', sendPowerResume)
+    powerMonitor.on('on-battery', () => broadcastBatteryState(true))
+    powerMonitor.on('on-ac', () => broadcastBatteryState(false))
+    onBatteryPower = powerMonitor.isOnBatteryPower()
   } catch {
     // powerMonitor is unavailable before app 'ready' on some platforms; the
     // caller registers after 'ready', so this should not normally throw.
@@ -5272,6 +5322,10 @@ function buildApplicationMenu() {
       // a menu accelerator would fight the rebind panel and (on macOS) be
       // swallowed before the renderer sees it. Here purely for discoverability.
       { click: () => createInstanceWindow(), label: 'New Window' },
+      // Same no-accelerator rationale: ⌘O is the rebindable renderer keybind
+      // (workspace.openFolder). Clicking runs the same open-folder-as-project
+      // flow through the renderer.
+      { click: () => sendOpenFolderRequested(), label: 'Open Folder…' },
       { type: 'separator' },
       IS_MAC
         ? {
@@ -5624,8 +5678,12 @@ function installContextMenu(window) {
       }
     }
 
+    // Bare right-click on non-editable, non-selected, non-media content (a pane
+    // body, the sidebar, chrome): the renderer's own context menus own those
+    // surfaces, and anywhere without one shows nothing — not a lone, useless
+    // "Select All" from the native fallback.
     if (!template.length) {
-      template.push({ role: 'selectAll' })
+      return
     }
 
     Menu.buildFromTemplate(template).popup({ window })
@@ -6167,35 +6225,24 @@ function _nativeTokenStorePath() {
   return path.join(app.getPath('userData'), 'native-oauth-tokens.json')
 }
 
-function _readNativeTokenStore(): Record<string, any> {
-  try {
-    const raw = fs.readFileSync(_nativeTokenStorePath(), 'utf8')
-    const parsed = JSON.parse(raw)
-
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
+// The electron-coupled half of the token store: safeStorage encryption plus the
+// userData file. native-token-store.ts owns the serialization/parse round trip
+// so it can be tested without an Electron runtime.
+function _nativeTokenStoreIo(): NativeTokenStoreIo {
+  return {
+    encrypt: encryptDesktopSecret,
+    decrypt: decryptDesktopSecret,
+    readStoreText: () => fs.readFileSync(_nativeTokenStorePath(), 'utf8'),
+    writeStoreText: (text: string) => {
+      fs.mkdirSync(path.dirname(_nativeTokenStorePath()), { recursive: true })
+      fs.writeFileSync(_nativeTokenStorePath(), text, { mode: 0o600 })
+    },
+    rememberLog
   }
 }
 
 function _persistNativeTokens(baseUrl: string, tokens: NativeTokenSet | null) {
-  const store = _readNativeTokenStore()
-
-  if (tokens) {
-    // Encrypt the whole token set as one blob so the refresh token never
-    // lands in plaintext on disk. Reuse the hardened encrypt helper.
-    const secret = encryptDesktopSecret(JSON.stringify(tokens))
-    store[baseUrl] = secret
-  } else {
-    delete store[baseUrl]
-  }
-
-  try {
-    fs.mkdirSync(path.dirname(_nativeTokenStorePath()), { recursive: true })
-    fs.writeFileSync(_nativeTokenStorePath(), JSON.stringify(store), { mode: 0o600 })
-  } catch (error) {
-    rememberLog(`[native-oauth] failed to persist tokens: ${(error as Error).message}`)
-  }
+  persistNativeTokenSet(baseUrl, tokens, _nativeTokenStoreIo())
 }
 
 function _loadNativeTokens(baseUrl: string): NativeTokenSet | null {
@@ -6205,27 +6252,13 @@ function _loadNativeTokens(baseUrl: string): NativeTokenSet | null {
     return cached
   }
 
-  const store = _readNativeTokenStore()
-  const secret = store[baseUrl]
+  const tokens = loadNativeTokenSet(baseUrl, _nativeTokenStoreIo())
 
-  if (!secret) {
-    return null
-  }
-
-  try {
-    const plaintext = decryptDesktopSecret(secret)
-
-    if (!plaintext) {
-      return null
-    }
-
-    const tokens = parseTokenResponse(JSON.parse(plaintext))
+  if (tokens) {
     _nativeTokens.set(baseUrl, tokens)
-
-    return tokens
-  } catch {
-    return null
   }
+
+  return tokens
 }
 
 function _storeNativeTokens(baseUrl: string, tokens: NativeTokenSet) {
@@ -8675,6 +8708,7 @@ function spawnSecondaryWindow({ sessionId, watch }: { sessionId?: string; watch?
   win.on('enter-full-screen', () => sendWindowStateChanged(true))
   win.on('leave-full-screen', () => sendWindowStateChanged(false))
 
+  streamThrottle.register(win)
   wireCommonWindowHandlers(win, zoomWiringForWindowKind('chat'))
 
   loadWindowUrl(
@@ -8717,7 +8751,7 @@ function nextInstanceBounds() {
 }
 
 // Open a new full-chrome instance window. Mirrors createWindow()'s window
-// options (shared chatWindowWebPreferences keeps backgroundThrottling:false so a
+// options (shared chatWindowWebPreferences + streamThrottle registration so a
 // streamed answer never stalls in the background) but is a peer, not the
 // primary: it never overwrites the mainWindow global, doesn't start the backend
 // (the renderer's getConnection() joins the already-running one), and loads the
@@ -8758,6 +8792,7 @@ function createInstanceWindow() {
   win.on('enter-full-screen', () => sendWindowStateChanged(true, win))
   win.on('leave-full-screen', () => sendWindowStateChanged(false, win))
 
+  streamThrottle.register(win)
   wireCommonWindowHandlers(win, zoomWiringForWindowKind('chat'))
 
   win.on('closed', () => {
@@ -9140,10 +9175,11 @@ function createWindow() {
     // material before the renderer paints the app theme. See createSessionWindow.
     show: false,
     backgroundColor: getWindowBackgroundColor(),
-    // Shared with the secondary session windows (chatWindowWebPreferences) so
-    // both keep `backgroundThrottling: false` — the chat transcript uses a
-    // bounded timer flush that Chromium clamps for blurred windows, stalling
-    // the live answer until refocus. See session-windows.ts.
+    // Shared with the secondary session windows (chatWindowWebPreferences);
+    // stream-aware throttling is applied per-window via streamThrottle so a
+    // live answer keeps painting while the window is blurred or minimized,
+    // without pinning visibilityState to 'visible' at idle. See
+    // session-windows.ts and stream-throttle.ts.
     webPreferences: chatWindowWebPreferences(PRELOAD_PATH)
   })
 
@@ -9236,6 +9272,7 @@ function createWindow() {
     }
   })
 
+  streamThrottle.register(mainWindow)
   wireCommonWindowHandlers(mainWindow, zoomWiringForWindowKind('chat'))
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
@@ -10405,14 +10442,27 @@ ipcMain.handle('hermes:stopPreviewFileWatch', (_event, id) => stopPreviewFileWat
 // merged picture. Keyed by webContents id so a closed window stops counting.
 const activeWorkByWebContents = new Map<number, ActiveWork>()
 
+// The same merged picture drives background throttling: chat windows run
+// unthrottled while any turn is in flight (streaming must paint while hidden)
+// and fall back to Chromium's default throttling at idle. See stream-throttle.ts.
+const streamThrottle = createStreamThrottle()
+
+function updateStreamThrottleFromActiveWork() {
+  streamThrottle.update(mergeActiveWork(activeWorkByWebContents.values()).count > 0)
+}
+
 ipcMain.on('hermes:active-work', (event, payload) => {
   const id = event.sender.id
 
   if (!activeWorkByWebContents.has(id)) {
-    event.sender.once('destroyed', () => activeWorkByWebContents.delete(id))
+    event.sender.once('destroyed', () => {
+      activeWorkByWebContents.delete(id)
+      updateStreamThrottleFromActiveWork()
+    })
   }
 
   activeWorkByWebContents.set(id, normalizeActiveWork(payload))
+  updateStreamThrottleFromActiveWork()
 })
 
 ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
@@ -11273,7 +11323,7 @@ function showAboutPanelFresh() {
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
     applicationVersion: resolveHermesVersion(),
-    copyright: 'Copyright © 2026 13bit'
+    copyright: 'Copyright © 2026 Nous Research'
   })
   app.showAboutPanel()
 }
@@ -11509,12 +11559,12 @@ ipcMain.handle('hermes:vscode-theme:fetch', async (_event, id) => fetchMarketpla
 ipcMain.handle('hermes:vscode-theme:search', async (_event, query) => searchMarketplaceThemes(String(query || ''), 20))
 
 // ---------------------------------------------------------------------------
-// rhermes:// deep links (e.g. rhermes://blueprint/morning-brief?time=08:00).
+// hermes:// deep links (e.g. hermes://blueprint/morning-brief?time=08:00).
 // A docs/dashboard "Send to App" button opens this URL; we route it into the
 // running app's chat composer. Three delivery paths: macOS 'open-url',
 // Win/Linux running-app 'second-instance' (argv), Win/Linux cold-start argv.
 // ---------------------------------------------------------------------------
-const HERMES_PROTOCOL = 'rhermes'
+const HERMES_PROTOCOL = 'hermes'
 let _pendingDeepLink = null
 let _rendererReadyForDeepLink = false
 
@@ -11541,7 +11591,7 @@ function handleDeepLink(url) {
     return
   }
 
-  // rhermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
+  // hermes://blueprint/<key>?slot=val  -> host="blueprint", path="/<key>"
   const kind = parsed.hostname || ''
   const name = decodeURIComponent((parsed.pathname || '').replace(/^\//, ''))
   const params = {}
@@ -11601,7 +11651,7 @@ function registerDeepLinkProtocol() {
 }
 
 // Single-instance lock: deep links on a running app (Win/Linux) arrive as a
-// second-instance argv. Without the lock a second `rhermes://` launch spawns a
+// second-instance argv. Without the lock a second `hermes://` launch spawns a
 // whole new app instead of routing into the running one.
 const _gotSingleInstanceLock = app.requestSingleInstanceLock()
 
@@ -11663,7 +11713,7 @@ app.whenReady().then(() => {
   applyQuickEntrySettings(readQuickEntrySettings())
   createWindow()
 
-  // Win/Linux cold start: the launching rhermes:// URL is in our own argv.
+  // Win/Linux cold start: the launching hermes:// URL is in our own argv.
   const _coldStartLink = _extractDeepLink(process.argv)
 
   if (_coldStartLink) {

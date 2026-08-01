@@ -185,7 +185,7 @@ rm "$HOME/.hermes/hermes-agent/.hermes-bootstrap-complete"
 # Rebuild a broken Python venv
 rm -rf "$HOME/.hermes/hermes-agent/venv"
 # Reset a stuck macOS microphone prompt (macOS only)
-tccutil reset Microphone cn.13bit.rhermes
+tccutil reset Microphone com.nousresearch.hermes
 ```
 
 **Windows (PowerShell):**
