@@ -2,9 +2,14 @@ name: Build Desktop (macOS, no notarization)
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag, for example v0.17.0-unsigned.1'
+        required: true
+        type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-macos:
@@ -40,5 +45,17 @@ jobs:
         with:
           name: macOS-RHermes-Notarization-Skipped
           path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: RHermes ${{ inputs.release_tag }} (not notarized)
+          body: |
+            This build is signed with a Developer ID Application certificate but has not been notarized by Apple.
+            macOS Gatekeeper may show a warning when opening it.
+          files: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
