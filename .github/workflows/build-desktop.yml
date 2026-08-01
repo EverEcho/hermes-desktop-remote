@@ -34,16 +34,18 @@ jobs:
 
       - name: Build and Package macOS App
         env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # These deliberately do not use electron-builder's APPLE_API_KEY* names.
+          # The afterSign hook below submits notarization with visible progress.
+          HERMES_NOTARY_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          HERMES_NOTARY_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          HERMES_NOTARY_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           # Print each nested component as @electron/osx-sign passes it to codesign.
           DEBUG: electron-osx-sign*
         run: |
-          if [ -n "$APPLE_API_KEY_CONTENT" ]; then
-            KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
-            printf "%s" "$APPLE_API_KEY_CONTENT" > "$KEY_PATH"
-            export APPLE_API_KEY="$KEY_PATH"
+          if [ -n "$HERMES_NOTARY_KEY_CONTENT" ]; then
+            KEY_PATH="${RUNNER_TEMP}/AuthKey_${HERMES_NOTARY_KEY_ID}.p8"
+            printf "%s" "$HERMES_NOTARY_KEY_CONTENT" > "$KEY_PATH"
+            export HERMES_NOTARY_KEY="$KEY_PATH"
           fi
           yarn workspace hermes dist:mac
 

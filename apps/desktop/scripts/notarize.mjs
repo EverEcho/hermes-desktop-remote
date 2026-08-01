@@ -31,7 +31,7 @@ function resolveApiKeyPath(rawValue) {
   }
 
   if (!inlineKeyLooksValid(value)) {
-    throw new Error('APPLE_API_KEY must be a file path or inline .p8 key content')
+    throw new Error('HERMES_NOTARY_KEY must be a file path or inline .p8 key content')
   }
 
   const tempPath = path.join(os.tmpdir(), `hermes-notary-${Date.now()}-${process.pid}.p8`)
@@ -72,12 +72,14 @@ export default async function notarize(context) {
     return
   }
 
-  const keyId = String(process.env.APPLE_API_KEY_ID || '').trim()
-  const issuer = String(process.env.APPLE_API_ISSUER || '').trim()
-  const rawApiKey = process.env.APPLE_API_KEY
+  // Do not use electron-builder's APPLE_API_KEY* environment variables here:
+  // it starts its own silent notarization before this afterSign hook runs.
+  const keyId = String(process.env.HERMES_NOTARY_KEY_ID || '').trim()
+  const issuer = String(process.env.HERMES_NOTARY_ISSUER || '').trim()
+  const rawApiKey = process.env.HERMES_NOTARY_KEY
   if (!rawApiKey || !keyId || !issuer) {
     console.log(
-      'Skipping notarization: APPLE_API_KEY, APPLE_API_KEY_ID, and APPLE_API_ISSUER are not fully configured.'
+      'Skipping notarization: HERMES_NOTARY_KEY, HERMES_NOTARY_KEY_ID, and HERMES_NOTARY_ISSUER are not fully configured.'
     )
     return
   }
