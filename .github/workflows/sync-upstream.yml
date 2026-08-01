@@ -42,9 +42,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore(sync): import upstream Desktop changes"
           title: "chore(sync): import upstream Desktop changes"
-          body: |
-            Automated upstream sync from `NousResearch/hermes-agent:main`.
-            Restored `apps/desktop` and `apps/shared`.
+          body-path: SYNC_SUMMARY.md
           branch: "chore/sync-upstream"
           delete-branch: true
           base: "main"
