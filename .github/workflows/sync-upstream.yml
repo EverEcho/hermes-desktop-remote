@@ -5,6 +5,12 @@ on:
     # 每天 UTC 0:00 (北京时间 8:00) 自动运行
     - cron: '0 0 * * *'
   workflow_dispatch: # 支持在 GitHub Actions 界面手动触发
+    inputs:
+      target_ref:
+        description: 'Upstream release tag or branch to sync (leave blank for latest release tag)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   sync-upstream:
@@ -32,6 +38,8 @@ jobs:
 
       - name: Add upstream remote & sync
         id: sync
+        env:
+          UPSTREAM_REF: ${{ inputs.target_ref || github.event.inputs.target_ref }}
         run: |
           git remote add upstream https://github.com/NousResearch/hermes-agent.git || true
           chmod +x ./scripts/sync-upstream-desktop.sh

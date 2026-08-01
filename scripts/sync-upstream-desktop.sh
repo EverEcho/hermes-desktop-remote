@@ -18,24 +18,40 @@ trap 'rm -f "$TMP_LOCAL" "$TMP_UPSTREAM"' EXIT
 # Get list of files locally modified since fork initialization
 git diff --name-only "$FORK_BASE" HEAD -- apps/desktop apps/shared | sort > "$TMP_LOCAL" || true
 
-git fetch upstream main
+# Target ref: use UPSTREAM_REF environment variable if set,
+# otherwise query GitHub API for official latest Release tag_name
+if [ -n "${UPSTREAM_REF:-}" ]; then
+  TARGET_REF="$UPSTREAM_REF"
+else
+  TARGET_REF=$(curl -sSL -m 10 "https://api.github.com/repos/NousResearch/hermes-agent/releases/latest" 2>/dev/null | grep -o '"tag_name": *"[^"]*"' | head -n 1 | cut -d'"' -f4 || echo "")
+fi
 
-# Get upstream target commit SHA and date
-UPSTREAM_SHA=$(git rev-parse --short upstream/main)
-UPSTREAM_DATE=$(git log -1 --format="%cd" --date=short upstream/main 2>/dev/null || echo "")
-COMMIT_TITLE="chore(sync): import upstream Desktop changes (upstream@$UPSTREAM_SHA)"
+if [ -z "$TARGET_REF" ]; then
+  echo "Error: Unable to fetch latest release tag from GitHub API." >&2
+  exit 1
+fi
+
+git fetch upstream tag "$TARGET_REF" || git fetch upstream "$TARGET_REF"
+
+echo "Syncing from upstream release tag: $TARGET_REF"
+
+# Get target commit SHA and date
+UPSTREAM_SHA=$(git rev-parse --short "$TARGET_REF")
+UPSTREAM_DATE=$(git log -1 --format="%cd" --date=short "$TARGET_REF" 2>/dev/null || echo "")
+COMMIT_TITLE="chore(sync): import upstream Desktop release ($TARGET_REF@$UPSTREAM_SHA)"
 
 # Output to GitHub Actions environment if available
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
+  echo "upstream_ref=$TARGET_REF" >> "$GITHUB_OUTPUT"
   echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
   echo "commit_title=$COMMIT_TITLE" >> "$GITHUB_OUTPUT"
 fi
 
 # Get recent upstream commit log for desktop & shared
-UPSTREAM_LOGS=$(git log -n 15 --format="- %h %s (%cr)" upstream/main -- apps/desktop apps/shared 2>/dev/null || echo "- Unable to fetch commit log")
+UPSTREAM_LOGS=$(git log -n 15 --format="- %h %s (%cr)" "$TARGET_REF" -- apps/desktop apps/shared 2>/dev/null || echo "- Unable to fetch commit log")
 
 # 1. Restore upstream code
-git restore --source=upstream/main -- apps/desktop apps/shared
+git restore --source="$TARGET_REF" -- apps/desktop apps/shared
 
 # 2. Automatically re-apply RHermes fork branding & customizations
 node ./scripts/apply-fork-branding.mjs
@@ -54,11 +70,11 @@ CONFLICTS=$(comm -12 "$TMP_LOCAL" "$TMP_UPSTREAM" 2>/dev/null | grep -vE '(packa
 cat << EOF > SYNC_SUMMARY.md
 ## 🔄 Upstream Sync Summary
 
-- **Upstream Target Commit**: [\`$UPSTREAM_SHA\`](https://github.com/NousResearch/hermes-agent/commit/$UPSTREAM_SHA) ($UPSTREAM_DATE)
+- **Upstream Target Release**: **\`$TARGET_REF\`** ([\`$UPSTREAM_SHA\`](https://github.com/NousResearch/hermes-agent/commit/$UPSTREAM_SHA) - $UPSTREAM_DATE)
 - **Synced Directories**: \`apps/desktop\`, \`apps/shared\`
 - **Branding Status**: RHermes fork branding auto-applied
 
-### 📝 Recent Upstream Commits
+### 📝 Recent Upstream Commits ($TARGET_REF)
 $UPSTREAM_LOGS
 
 ### 📊 Changed Files Stats
