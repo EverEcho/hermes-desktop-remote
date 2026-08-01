@@ -1,0 +1,44 @@
+name: Build Desktop (macOS, no notarization)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Import macOS Certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+
+      - name: Build and Package macOS App Without Notarization
+        env:
+          # Keep Developer ID signing, but omit all notarization credentials.
+          DEBUG: electron-osx-sign*
+        run: yarn workspace hermes dist:mac
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-RHermes-Notarization-Skipped
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
