@@ -48,10 +48,10 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
   return (
     <div
-      className="shrink-0 px-3 pt-2 bg-(--ui-bg-chrome)"
-      style={{ paddingBottom: 'calc(0.625rem + var(--safe-area-bottom))' }}
+      className="shrink-0 px-3 pt-1.5 bg-(--ui-bg-chrome) border-t border-(--ui-stroke-tertiary)"
+      style={{ paddingBottom: 'calc(0.5rem + var(--safe-area-bottom))' }}
     >
-      <div className="flex items-end gap-2 rounded-2xl border border-(--ui-stroke-secondary) bg-[color-mix(in_srgb,var(--ui-bg-card)_72%,transparent)] backdrop-blur-md px-2 py-1.5 shadow-(--shadow-nous)">
+      <div className="flex items-end gap-1.5 rounded-[var(--btn-radius)] border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2 py-1">
         <textarea
           ref={textareaRef}
           value={text}
@@ -62,7 +62,7 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           rows={1}
           className={cn(
             'flex-1 resize-none bg-transparent border-none',
-            'px-2 py-1.5 text-(--conversation-text-font-size) text-(--ui-text-primary)',
+            'px-1.5 py-1 text-xs leading-4 text-(--ui-text-primary)',
             'placeholder:text-(--ui-text-quaternary)',
             'focus:outline-none max-h-[120px] no-scrollbar'
           )}

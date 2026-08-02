@@ -10,7 +10,7 @@ export type MobileConnectionState =
 
 export interface MobileGatewayConfig {
   url: string
-  authMode: 'oauth' | 'token'
+  authMode: 'oauth' | 'token' | 'cookie'
   profile?: string
 }
 

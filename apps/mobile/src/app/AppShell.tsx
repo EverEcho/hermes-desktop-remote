@@ -6,8 +6,10 @@ import { $pendingApprovals, $pendingClarifications, $pendingSecrets, resolveAppr
 import { $sessions, $sessionsLoading, $activeSessionId, $currentCwd, refreshSessions, openSession, closeSession, createNewSession } from '@/sessions/store'
 import { logout } from '@/auth'
 import { Drawer } from '@/ui/Drawer'
-import { BottomSheet } from '@/ui/BottomSheet'
-import { cn } from '@/ui/utils'
+import { MobileSheet } from '@/ui/BottomSheet'
+import { Button } from '@/ui/Button'
+import { Input } from '@/ui/Input'
+import { MobileListRow } from '@/ui/primitives'
 import { SessionDetail } from '@/sessions/SessionDetail'
 import { SessionList } from '@/sessions/SessionList'
 import { MobileHeader } from '@/components/MobileHeader'
@@ -16,8 +18,10 @@ import { WorkspaceSheet } from '@/workspace/WorkspaceSheet'
 import { SkillsPage } from '@/features/SkillsPage'
 import { CronPage } from '@/features/CronPage'
 import { MessagingPage } from '@/features/MessagingPage'
+import { DesktopSidebar } from './DesktopSidebar'
+import { NewSessionHome } from './NewSessionHome'
 
-export function AppShell() {
+export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
@@ -56,7 +60,21 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className="h-full flex flex-col bg-neutral-950">
+    <div className="h-full flex bg-(--ui-bg-chrome)">
+      <DesktopSidebar
+        sessions={sessions}
+        loading={sessionsLoading}
+        activeSessionId={activeSessionId}
+        onSelect={handleSelectSession}
+        onNew={handleNewSession}
+        onRefresh={() => void refreshSessions()}
+        onFeature={feature => {
+          if (feature === 'skills') setSkillsOpen(true)
+          if (feature === 'messaging') setMessagingOpen(true)
+          if (feature === 'workspace') setWorkspaceOpen(true)
+        }}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
       <MobileHeader
         onMenuPress={() => setDrawerOpen(true)}
         onSettingsPress={() => setSettingsOpen(true)}
@@ -71,13 +89,7 @@ export function AppShell() {
         {activeSessionId ? (
           <SessionDetail sessionId={activeSessionId} />
         ) : (
-          <SessionList
-            sessions={sessions}
-            loading={sessionsLoading}
-            onSelect={handleSelectSession}
-            onNew={handleNewSession}
-            onRefresh={() => void refreshSessions()}
-          />
+          <NewSessionHome />
         )}
       </div>
 
@@ -92,18 +104,28 @@ export function AppShell() {
             inDrawer
           />
         </div>
-        <div className="p-4 border-t border-neutral-800 space-y-1">
-          <DrawerButton label="Workspace" onClick={() => { setDrawerOpen(false); setWorkspaceOpen(true) }} />
-          <DrawerButton label="Skills" onClick={() => { setDrawerOpen(false); setSkillsOpen(true) }} />
-          <DrawerButton label="Cron Jobs" onClick={() => { setDrawerOpen(false); setCronOpen(true) }} />
-          <DrawerButton label="Messaging" onClick={() => { setDrawerOpen(false); setMessagingOpen(true) }} />
-          <DrawerButton label="Settings" onClick={() => { setDrawerOpen(false); setSettingsOpen(true) }} />
-          <button
-            className="w-full text-left text-sm text-red-400 py-2"
-            onClick={() => void logout()}
-          >
-            Sign Out
-          </button>
+        <div className="px-2 py-2 border-t border-(--ui-stroke-tertiary) space-y-px">
+          <MobileListRow onClick={() => { setDrawerOpen(false); setWorkspaceOpen(true) }}>
+            <span className="text-xs text-(--ui-text-secondary)">Workspace</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => { setDrawerOpen(false); setSkillsOpen(true) }}>
+            <span className="text-xs text-(--ui-text-secondary)">Skills</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => { setDrawerOpen(false); setCronOpen(true) }}>
+            <span className="text-xs text-(--ui-text-secondary)">Cron Jobs</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => { setDrawerOpen(false); setMessagingOpen(true) }}>
+            <span className="text-xs text-(--ui-text-secondary)">Messaging</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => { setDrawerOpen(false); setSettingsOpen(true) }}>
+            <span className="text-xs text-(--ui-text-secondary)">Settings</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => { setDrawerOpen(false); onChangeGateway() }}>
+            <span className="text-xs text-(--ui-text-secondary)">Change gateway</span>
+          </MobileListRow>
+          <MobileListRow onClick={() => void logout()}>
+            <span className="text-xs text-(--ui-red)">Sign Out</span>
+          </MobileListRow>
         </div>
       </Drawer>
 
@@ -136,47 +158,27 @@ export function AppShell() {
           prompt={pendingSecrets[0].prompt}
         />
       )}
+      </div>
     </div>
-  )
-}
-
-function DrawerButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      className="w-full text-left text-(--conversation-text-font-size) text-(--ui-text-secondary) py-2 rounded-md px-1 active:bg-(--ui-row-active-background)"
-      onClick={onClick}
-    >
-      {label}
-    </button>
   )
 }
 
 function ApprovalSheet({ requestId, command, description }: { requestId: string; command?: string; description?: string }) {
   return (
-    <BottomSheet open onClose={() => {}} title="Approval required">
-      <div className="space-y-3 py-1">
-        {description && <p className="text-(--conversation-text-font-size) text-(--ui-text-secondary)">{description}</p>}
+    <MobileSheet open onClose={() => {}} title="Approval required">
+      <div className="space-y-3">
+        {description && <p className="text-xs text-(--ui-text-secondary)">{description}</p>}
         {command && (
-          <pre className="text-(--conversation-tool-font-size) font-mono bg-(--ui-widget-surface-background) rounded-lg p-3 overflow-x-auto text-(--ui-text-secondary) select-text">
+          <pre className="text-[0.6875rem] font-mono bg-(--ui-widget-surface-background) rounded-[var(--btn-radius)] p-2.5 overflow-x-auto text-(--ui-text-secondary) select-text">
             {command}
           </pre>
         )}
-        <div className="flex gap-2 pt-1">
-          <button
-            className="flex-1 py-2.5 rounded-lg bg-(--ui-green) text-white font-medium text-(--conversation-text-font-size) active:opacity-85"
-            onClick={() => resolveApproval(requestId, true)}
-          >
-            Approve
-          </button>
-          <button
-            className="flex-1 py-2.5 rounded-lg bg-(--ui-bg-quaternary) text-(--ui-text-secondary) font-medium text-(--conversation-text-font-size) active:bg-(--ui-row-active-background)"
-            onClick={() => resolveApproval(requestId, false)}
-          >
-            Deny
-          </button>
+        <div className="flex gap-2">
+          <Button className="flex-1" onClick={() => resolveApproval(requestId, true)}>Approve</Button>
+          <Button className="flex-1" variant="secondary" onClick={() => resolveApproval(requestId, false)}>Deny</Button>
         </div>
       </div>
-    </BottomSheet>
+    </MobileSheet>
   )
 }
 
@@ -184,42 +186,41 @@ function ClarifySheet({ requestId, question, choices }: { requestId: string; que
   const [answer, setAnswer] = useState('')
 
   return (
-    <BottomSheet open onClose={() => {}} title="Input needed">
-      <div className="space-y-3 py-1">
-        <p className="text-(--conversation-text-font-size) text-(--ui-text-primary)">{question}</p>
+    <MobileSheet open onClose={() => {}} title="Input needed">
+      <div className="space-y-3">
+        <p className="text-xs text-(--ui-text-primary)">{question}</p>
 
         {choices && choices.length > 0 ? (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {choices.map(choice => (
-              <button
+              <Button
                 key={choice}
-                className="w-full text-left px-3.5 py-2.5 rounded-lg bg-(--ui-widget-surface-background) text-(--conversation-text-font-size) text-(--ui-text-secondary) active:bg-(--ui-row-active-background)"
+                variant="secondary"
+                className="w-full justify-start"
                 onClick={() => resolveClarification(requestId, choice)}
               >
                 {choice}
-              </button>
+              </Button>
             ))}
           </div>
         ) : (
           <>
-            <input
-              type="text"
+            <Input
               value={answer}
               onChange={e => setAnswer(e.target.value)}
               placeholder="Type your answer…"
-              className="w-full rounded-lg bg-(--ui-bg-card) border border-(--ui-stroke-secondary) px-3.5 py-2.5 text-(--conversation-text-font-size) text-(--ui-text-primary) placeholder:text-(--ui-text-quaternary) focus:outline-none focus:border-(--ui-accent)"
             />
-            <button
+            <Button
+              className="w-full"
               disabled={!answer.trim()}
-              className="w-full py-2.5 rounded-lg bg-(--theme-primary) text-white font-medium text-(--conversation-text-font-size) disabled:opacity-40 active:opacity-85"
               onClick={() => resolveClarification(requestId, answer.trim())}
             >
               Submit
-            </button>
+            </Button>
           </>
         )}
       </div>
-    </BottomSheet>
+    </MobileSheet>
   )
 }
 
@@ -227,27 +228,27 @@ function SecretSheet({ requestId, envVar, prompt }: { requestId: string; envVar:
   const [value, setValue] = useState('')
 
   return (
-    <BottomSheet open onClose={() => {}} title="Credential required">
-      <div className="space-y-3 py-1">
-        <p className="text-(--conversation-text-font-size) text-(--ui-text-secondary)">{prompt ?? `Enter value for ${envVar}`}</p>
-        <input
+    <MobileSheet open onClose={() => {}} title="Credential required">
+      <div className="space-y-3">
+        <p className="text-xs text-(--ui-text-secondary)">{prompt ?? `Enter value for ${envVar}`}</p>
+        <Input
           type="password"
           value={value}
           onChange={e => setValue(e.target.value)}
           placeholder={envVar}
-          className="w-full rounded-lg bg-(--ui-bg-card) border border-(--ui-stroke-secondary) px-3.5 py-2.5 text-(--conversation-text-font-size) text-(--ui-text-primary) placeholder:text-(--ui-text-quaternary) font-mono focus:outline-none focus:border-(--ui-accent)"
+          className="font-mono"
         />
-        <button
+        <Button
+          className="w-full"
           disabled={!value.trim()}
-          className="w-full py-2.5 rounded-lg bg-(--theme-primary) text-white font-medium text-(--conversation-text-font-size) disabled:opacity-40 active:opacity-85"
           onClick={() => {
             resolveSecret(requestId, value)
             setValue('')
           }}
         >
           Submit
-        </button>
+        </Button>
       </div>
-    </BottomSheet>
+    </MobileSheet>
   )
 }

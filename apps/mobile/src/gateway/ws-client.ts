@@ -1,8 +1,9 @@
-import { type ConnectionState, type GatewayEvent, JsonRpcGatewayClient } from '@hermes/shared'
+import { type ConnectionState, JsonRpcGatewayClient } from '@hermes/shared'
 import { atom } from 'nanostores'
 
 import { getWsTicket, $authState } from '@/auth'
-import { getGatewayBaseUrl, configureHttpClient, setActiveProfile } from './http-client'
+import { getGatewayBaseUrl, setActiveProfile } from './http-client'
+import { gatewayTargetHeaders } from './request-url'
 
 export class MobileGateway extends JsonRpcGatewayClient {
   constructor() {
@@ -31,7 +32,6 @@ let gateway: MobileGateway | null = null
 let reconnectAttempt = 0
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let wantOpen = false
-let currentProfile = 'default'
 
 const MAX_RECONNECT_DELAY_MS = 15_000
 
@@ -41,7 +41,6 @@ export function getGateway(): MobileGateway | null {
 
 export async function connectGateway(profile?: string): Promise<void> {
   if (profile) {
-    currentProfile = profile
     setActiveProfile(profile)
   }
 
@@ -87,7 +86,7 @@ async function doConnect(): Promise<void> {
       const ticket = await getWsTicket(baseUrl)
       const wsBase = baseUrl.replace(/^http/, 'ws')
       wsUrl = `${wsBase}/api/ws?ticket=${encodeURIComponent(ticket)}`
-    } else {
+    } else if (authState.authMode === 'token') {
       const { loadSessionToken } = await import('@/auth/token-store')
       const token = await loadSessionToken()
 
@@ -99,6 +98,10 @@ async function doConnect(): Promise<void> {
 
       const wsBase = baseUrl.replace(/^http/, 'ws')
       wsUrl = `${wsBase}/api/ws?token=${encodeURIComponent(token)}`
+    } else {
+      const wsBase = baseUrl.replace(/^http/, 'ws')
+      const target = gatewayTargetHeaders(authState.gatewayUrl)['X-Hermes-Gateway-Target']
+      wsUrl = `${wsBase}/api/ws${target ? `?__gateway_target=${encodeURIComponent(target)}` : ''}`
     }
 
     if (!gateway) {
@@ -184,7 +187,6 @@ export async function reconnectGateway(): Promise<void> {
 }
 
 export function switchProfile(profile: string): void {
-  currentProfile = profile
   setActiveProfile(profile)
   reconnectAttempt = 0
 

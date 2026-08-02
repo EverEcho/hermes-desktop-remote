@@ -41,66 +41,65 @@ describe('session event isolation', () => {
   const activeRuntime = 'runtime-abc'
 
   it('accepts events scoped to the active runtime session', () => {
-    const event: GatewayEvent = {
-      type: 'message.delta',
-      session_id: activeRuntime,
-      payload: { text: 'hello' }
-    }
-
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(true)
+    expect(shouldAcceptEvent(
+      { type: 'message.delta', session_id: activeRuntime, payload: { text: 'hello' } },
+      activeRuntime
+    )).toBe(true)
   })
 
   it('rejects events scoped to a different runtime session', () => {
-    const event: GatewayEvent = {
-      type: 'message.delta',
-      session_id: 'runtime-other',
-      payload: { text: 'wrong session' }
-    }
-
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(false)
+    expect(shouldAcceptEvent(
+      { type: 'message.delta', session_id: 'runtime-other', payload: { text: 'wrong' } },
+      activeRuntime
+    )).toBe(false)
   })
 
   it('rejects unscoped stream events when a runtime is active', () => {
-    const event: GatewayEvent = {
-      type: 'tool.start',
-      payload: { name: 'bash' }
-    }
-
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(false)
+    expect(shouldAcceptEvent(
+      { type: 'tool.start', payload: { name: 'bash' } },
+      activeRuntime
+    )).toBe(false)
   })
 
-  it('accepts unscoped non-stream events (e.g. gateway.ready)', () => {
-    const event: GatewayEvent = { type: 'gateway.ready' }
-
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(true)
+  it('accepts unscoped non-stream events', () => {
+    expect(shouldAcceptEvent(
+      { type: 'gateway.ready' },
+      activeRuntime
+    )).toBe(true)
   })
 
-  it('accepts all events when no runtime is active (new session)', () => {
-    const event: GatewayEvent = {
-      type: 'message.delta',
-      payload: { text: 'first message' }
-    }
-
-    expect(shouldAcceptEvent(event, null)).toBe(true)
+  it('accepts all events when no runtime is active', () => {
+    expect(shouldAcceptEvent(
+      { type: 'message.delta', payload: { text: 'first' } },
+      null
+    )).toBe(true)
   })
 
   it('rejects background session tool events', () => {
-    const event: GatewayEvent = {
-      type: 'tool.complete',
-      session_id: 'background-session-xyz',
-      payload: { result: 'done' }
-    }
-
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(false)
+    expect(shouldAcceptEvent(
+      { type: 'tool.complete', session_id: 'bg-xyz', payload: { result: 'done' } },
+      activeRuntime
+    )).toBe(false)
   })
 
   it('accepts session.title for the active session', () => {
-    const event: GatewayEvent = {
-      type: 'session.title',
-      session_id: activeRuntime,
-      payload: { title: 'My Chat' }
-    }
+    expect(shouldAcceptEvent(
+      { type: 'session.title', session_id: activeRuntime, payload: { title: 'My Chat' } },
+      activeRuntime
+    )).toBe(true)
+  })
 
-    expect(shouldAcceptEvent(event, activeRuntime)).toBe(true)
+  it('rejects message.start from a different session', () => {
+    expect(shouldAcceptEvent(
+      { type: 'message.start', session_id: 'other-session' },
+      activeRuntime
+    )).toBe(false)
+  })
+
+  it('rejects thinking.delta from a different session', () => {
+    expect(shouldAcceptEvent(
+      { type: 'thinking.delta', session_id: 'other-session', payload: { text: '...' } },
+      activeRuntime
+    )).toBe(false)
   })
 })

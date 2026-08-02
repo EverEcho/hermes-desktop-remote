@@ -1,4 +1,5 @@
-import { getAccessToken, $authState } from '@/auth'
+import { getAccessToken } from '@/auth'
+import { gatewayTargetHeaders, resolveGatewayRequestUrl } from './request-url'
 
 export class ApiError extends Error {
   readonly status: number
@@ -21,17 +22,19 @@ interface RequestOptions {
 }
 
 let _gatewayUrl = ''
-let _authMode: 'oauth' | 'token' = 'token'
+let _configuredGatewayUrl = ''
+let _authMode: 'oauth' | 'token' | 'cookie' = 'token'
 let _sessionToken: string | null = null
 let _profile = 'default'
 
 export function configureHttpClient(config: {
   gatewayUrl: string
-  authMode: 'oauth' | 'token'
+  authMode: 'oauth' | 'token' | 'cookie'
   sessionToken?: string | null
   profile?: string
 }): void {
-  _gatewayUrl = config.gatewayUrl.replace(/\/+$/, '')
+  _configuredGatewayUrl = config.gatewayUrl.replace(/\/+$/, '')
+  _gatewayUrl = resolveGatewayRequestUrl(_configuredGatewayUrl)
   _authMode = config.authMode
   _sessionToken = config.sessionToken ?? null
   _profile = config.profile ?? 'default'
@@ -90,8 +93,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   try {
     const response = await fetch(url, {
       method,
-      headers,
+      headers: { ...headers, ...gatewayTargetHeaders(_configuredGatewayUrl) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: _authMode === 'cookie' ? 'include' : 'same-origin',
       signal: controller.signal
     })
 
@@ -136,7 +140,8 @@ export async function apiUpload<T>(
 
   const response = await fetch(url, {
     method: 'POST',
-    headers,
+    headers: { ...headers, ...gatewayTargetHeaders(_configuredGatewayUrl) },
+    credentials: _authMode === 'cookie' ? 'include' : 'same-origin',
     body: formData
   })
 

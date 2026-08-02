@@ -3,11 +3,21 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import { initializeNativeAdapters, onAppStateChange, onNetworkChange, onKeyboardHeightChange } from './native'
-import { reconnectGateway, disconnectGateway } from './gateway'
+import { reconnectGateway } from './gateway'
 import './styles.css'
+
+function applyColorScheme() {
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  document.documentElement.classList.toggle('dark', prefersDark)
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    document.documentElement.classList.toggle('dark', e.matches)
+  })
+}
 
 function LifecycleManager() {
   useEffect(() => {
+    applyColorScheme()
     void initializeNativeAdapters()
 
     const offAppState = onAppStateChange(isActive => {

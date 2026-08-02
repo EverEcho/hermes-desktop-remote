@@ -4,7 +4,7 @@ import { atom } from 'nanostores'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 import type { MobileMessage, MobileToolCall } from '@/types/mobile'
 import * as api from '@/gateway/api'
-import { getGateway, onGatewayEvent } from '@/gateway'
+import { onGatewayEvent } from '@/gateway'
 
 export const $sessions = atom<SessionInfo[]>([])
 export const $sessionsLoading = atom(true)
@@ -72,7 +72,7 @@ export async function openSession(storedSessionId: string): Promise<void> {
 
       $messages.set(convertMessages(transcript.messages))
     }
-  } catch (error) {
+  } catch (_error) {
     if (generation !== activeSessionGeneration) {
       return
     }

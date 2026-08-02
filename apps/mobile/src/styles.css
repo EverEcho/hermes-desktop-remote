@@ -1,14 +1,16 @@
 @import 'tailwindcss';
 
 /*
- * RHermes Mobile design tokens — resolved from apps/desktop/src/styles.css
- * (dark theme). Values reproduce the Desktop `:root.dark` *computed* surfaces
- * (the blue-tinted seed mixed into the neutral, not the bare neutral), so the
- * two clients read as one product. The connect card, composer dock and overlays
- * all float on `--shadow-nous` + `--stroke-nous`, exactly as on Desktop.
+ * RHermes Mobile — Desktop skin adapter.
+ *
+ * Derives every surface from the same seeds as apps/desktop/src/styles.css.
+ * Light is the default `:root`; dark overrides sit on `:root.dark`.
+ * The `<html>` element gets `.dark` from main.tsx (system preference or
+ * manual toggle). No hand-copied snapshots — the formulas match Desktop.
  */
+
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
 
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -16,85 +18,137 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
   --keyboard-height: 0px;
 
-  /* Brand / accent — Desktop --theme-primary, unchanged in dark. */
+  /* ── Seeds (Desktop :root light) ──────────────────────────────────── */
+  --theme-foreground: #17171a;
   --theme-primary: #0053fd;
-  --ui-accent: #0053fd;
-  --ui-accent-secondary: #0053fd;
+  --theme-background-seed: #f8faff;
+  --theme-sidebar-seed: #f3f7ff;
+  --theme-card-seed: #ffffff;
+  --theme-elevated-seed: #ffffff;
+  --theme-neutral-chrome: #f3f3f3;
+  --theme-neutral-sidebar: #f3f3f3;
+  --theme-neutral-card: #fcfcfc;
+  --theme-mix-chrome: 92%;
+  --theme-mix-sidebar: 100%;
+  --theme-mix-card: 22%;
+  --theme-mix-elevated: 28%;
+  --theme-mix-bubble: 0%;
+  --theme-fill-primary-accent-mix: 16%;
+  --theme-fill-quaternary-accent-mix: 5%;
+  --theme-stroke-primary-accent-mix: 24%;
+  --theme-stroke-secondary-accent-mix: 16%;
+  --theme-stroke-tertiary-accent-mix: 10%;
+  --theme-stroke-quaternary-accent-mix: 6%;
+  --theme-row-active-accent-mix: 8%;
+  --theme-control-hover-accent-mix: 6%;
+
+  /* ── Derived (same formulas as Desktop) ───────────────────────────── */
+  --ui-base: var(--theme-foreground);
+  --ui-accent: var(--theme-primary);
+  --ui-accent-secondary: var(--theme-primary);
   --ui-warm: #cf806d;
 
-  /* Resolved dark surfaces (seed #15171c mixed into the neutral at the Desktop
-     dark percentages) — a cool near-black, never a flat #000. */
-  --ui-bg-chrome: #0f1013;
-  --ui-bg-sidebar: #0b0c0e;
-  --ui-bg-card: #161618;
-  --ui-bg-elevated: #1b1b1f;
-  --ui-bg-input: #101012;
-  --ui-widget-surface-background: color-mix(in srgb, var(--ui-bg-card) 88%, #000);
-  --ui-bg-quaternary: color-mix(in srgb, var(--ui-accent) 5%, rgba(255, 255, 255, 0.04));
-  --ui-row-hover-background: color-mix(in srgb, var(--ui-accent) 4%, rgba(255, 255, 255, 0.03));
-  --ui-row-active-background: color-mix(in srgb, var(--ui-accent) 8%, rgba(255, 255, 255, 0.05));
-  --chrome-action-hover: color-mix(in srgb, var(--ui-accent) 6%, rgba(255, 255, 255, 0.04));
+  --ui-bg-chrome: color-mix(in srgb, var(--theme-background-seed) var(--theme-mix-chrome), var(--theme-neutral-chrome));
+  --ui-bg-sidebar: color-mix(in srgb, var(--theme-sidebar-seed) var(--theme-mix-sidebar), var(--theme-neutral-sidebar));
+  --ui-bg-card: color-mix(in srgb, var(--theme-card-seed) var(--theme-mix-card), var(--theme-neutral-card));
+  --ui-bg-elevated: color-mix(in srgb, var(--theme-elevated-seed) var(--theme-mix-elevated), var(--theme-neutral-card));
+  --ui-bg-input: var(--theme-neutral-card);
+  --ui-widget-surface-background: var(--ui-bg-card);
+  --ui-bg-quaternary: color-mix(in srgb, var(--ui-accent) var(--theme-fill-quaternary-accent-mix), color-mix(in srgb, var(--ui-base) 4%, transparent));
+  --ui-row-active-background: color-mix(in srgb, var(--ui-accent) var(--theme-row-active-accent-mix), color-mix(in srgb, var(--ui-base) 5%, transparent));
+  --chrome-action-hover: color-mix(in srgb, var(--ui-accent) var(--theme-control-hover-accent-mix), color-mix(in srgb, var(--ui-base) 4%, transparent));
 
-  /* Text hierarchy — Desktop white-base mixes. */
-  --ui-text-primary: rgba(255, 255, 255, 0.94);
-  --ui-text-secondary: rgba(255, 255, 255, 0.74);
-  --ui-text-tertiary: rgba(255, 255, 255, 0.54);
-  --ui-text-quaternary: rgba(255, 255, 255, 0.36);
-  --conversation-scaffold-text: rgba(255, 255, 255, 0.64);
-  --conversation-scaffold-meta: rgba(255, 255, 255, 0.44);
+  --ui-text-primary: color-mix(in srgb, var(--ui-base) 94%, transparent);
+  --ui-text-secondary: color-mix(in srgb, var(--ui-base) 74%, transparent);
+  --ui-text-tertiary: color-mix(in srgb, var(--ui-base) 54%, transparent);
+  --ui-text-quaternary: color-mix(in srgb, var(--ui-base) 36%, transparent);
+  --conversation-scaffold-text: color-mix(in srgb, var(--ui-base) 64%, transparent);
+  --conversation-scaffold-meta: color-mix(in srgb, var(--ui-base) 44%, transparent);
 
-  /* Strokes. */
-  --ui-stroke-primary: color-mix(in srgb, var(--ui-accent) 24%, rgba(255, 255, 255, 0.1));
-  --ui-stroke-secondary: color-mix(in srgb, var(--ui-accent) 16%, rgba(255, 255, 255, 0.07));
-  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-accent) 10%, rgba(255, 255, 255, 0.05));
-  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-accent) 6%, rgba(255, 255, 255, 0.03));
+  --ui-stroke-primary: color-mix(in srgb, var(--ui-accent) var(--theme-stroke-primary-accent-mix), color-mix(in srgb, var(--ui-base) 10%, transparent));
+  --ui-stroke-secondary: color-mix(in srgb, var(--ui-accent) var(--theme-stroke-secondary-accent-mix), color-mix(in srgb, var(--ui-base) 7%, transparent));
+  --ui-stroke-tertiary: color-mix(in srgb, var(--ui-accent) var(--theme-stroke-tertiary-accent-mix), color-mix(in srgb, var(--ui-base) 5%, transparent));
+  --ui-stroke-quaternary: color-mix(in srgb, var(--ui-accent) var(--theme-stroke-quaternary-accent-mix), color-mix(in srgb, var(--ui-base) 3%, transparent));
   --stroke-nous: color-mix(in srgb, currentColor 3%, transparent);
 
-  /* Recessed input — Desktop dark --dt-input-* knobs. */
-  --dt-input-border: 4%;
-  --dt-input-inset: inset 0 1px 1px color-mix(in srgb, #000 38%, transparent);
-  --dt-ring: var(--ui-stroke-primary);
-
-  /* Semantic palette (dark overrides). */
-  --ui-red: #e75e78;
-  --ui-green: #55a583;
+  --ui-red: #cf2d56;
+  --ui-green: #1f8a65;
   --ui-yellow: #c08532;
-  --ui-cyan: #6f9ba6;
-  --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 62%, #fff);
+  --ui-cyan: #4c7f8c;
+  --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 70%, #000);
   --ui-diff-add-background: color-mix(in srgb, var(--ui-green) 12%, transparent);
-  --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 62%, #fff);
+  --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 70%, #000);
   --ui-diff-remove-background: color-mix(in srgb, var(--ui-red) 12%, transparent);
 
-  /* User bubble — tinted surface, not a solid block. */
-  --ui-chat-bubble-background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-bg-card));
+  --ui-chat-bubble-background: color-mix(in srgb, var(--theme-primary) 6%, var(--theme-neutral-card));
 
-  /* Elevation — Desktop shadow-nous (single top light source, layered falloff). */
   --shadow-nous:
-    0 0.125rem 0.25rem -0.125rem rgba(0, 0, 0, 0.28),
-    0 0.5rem 0.75rem -0.375rem rgba(0, 0, 0, 0.24),
-    0 1.25rem 1.75rem -0.875rem rgba(0, 0, 0, 0.22),
-    0 2.25rem 3rem -1.75rem rgba(0, 0, 0, 0.18);
+    0 0.125rem 0.25rem -0.125rem color-mix(in srgb, #000 7%, transparent),
+    0 0.5rem 0.75rem -0.375rem color-mix(in srgb, #000 6%, transparent),
+    0 1.25rem 1.75rem -0.875rem color-mix(in srgb, #000 6%, transparent),
+    0 2.25rem 3rem -1.75rem color-mix(in srgb, #000 0%, transparent);
 
-  /* Typography — Desktop faces. */
   --dt-font-sans:
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
   --dt-font-mono: Menlo, Monaco, 'SF Mono', 'Courier Prime', monospace;
 
-  /* Conversation metrics — Desktop. */
   --conversation-text-font-size: 0.8125rem;
   --conversation-tool-font-size: 0.6875rem;
   --conversation-caption-font-size: 0.75rem;
   --conversation-line-height: 1.125rem;
 
-  /* Desktop button radius — the single most load-bearing visual detail. */
   --btn-radius: 2.5px;
+
+  /* Input chrome — Desktop knobs. */
+  --dt-input-border: 7%;
+  --dt-input-inset: inset 0 1px 1px color-mix(in srgb, #000 10%, transparent);
+  --dt-composer-ring: var(--ui-base);
 }
 
+/* ── Dark overrides (Desktop :root.dark) ────────────────────────────── */
+:root.dark {
+  --theme-neutral-chrome: #0d0d0e;
+  --theme-neutral-sidebar: #0a0a0b;
+  --theme-neutral-card: #161618;
+  --theme-mix-chrome: 74%;
+  --theme-mix-card: 38%;
+  --theme-mix-elevated: 46%;
+  --theme-mix-bubble: 46%;
+
+  --ui-red: #e75e78;
+  --ui-green: #55a583;
+  --ui-cyan: #6f9ba6;
+  --ui-diff-add-foreground: color-mix(in srgb, var(--ui-green) 62%, #fff);
+  --ui-diff-remove-foreground: color-mix(in srgb, var(--ui-red) 62%, #fff);
+
+  --ui-widget-surface-background: color-mix(in srgb, var(--ui-bg-card) 88%, #000);
+  --dt-input-border: 4%;
+  --dt-input-inset: inset 0 1px 1px color-mix(in srgb, #000 38%, transparent);
+}
+
+/* ── Input chrome (ported from Desktop styles.css) ──────────────────── */
+.desktop-input-chrome {
+  background: color-mix(in srgb, var(--ui-bg-card) 0%, transparent);
+  border-color: color-mix(in srgb, var(--dt-composer-ring) var(--dt-input-border), transparent);
+  box-shadow: var(--dt-input-inset);
+  transition: border-color 200ms ease-out;
+}
+
+.desktop-input-chrome:hover {
+  border-color: color-mix(in srgb, var(--dt-composer-ring) calc(var(--dt-input-border) * 2), transparent);
+}
+
+.desktop-input-chrome:focus,
+.desktop-input-chrome:focus-within {
+  border-color: var(--dt-composer-ring);
+  box-shadow: none;
+  outline: none;
+}
+
+/* ── Base reset ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -108,9 +162,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-html,
-body,
-#root {
+html, body, #root {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
@@ -128,8 +180,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-input,
-textarea {
+input, textarea {
   font: inherit;
   user-select: text;
   -webkit-user-select: text;
@@ -140,54 +191,24 @@ textarea {
   color: inherit;
 }
 
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.font-mono, code, pre { font-family: var(--dt-font-mono); }
 
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.font-mono,
-code,
-pre {
-  font-family: var(--dt-font-mono);
-}
-
-/* Staggered mount reveal — gives the connect surface life without colour
-   blobs. Killed wholesale by the reduced-motion rule above. */
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-.rise {
-  opacity: 0;
-  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/* A single cool top-light wash behind the connect card — structural, not an
-   aurora. Mirrors the downward light source that shadow-nous assumes. */
-@keyframes ambient-breathe {
-  0%,
-  100% {
-    opacity: 0.55;
-  }
-  50% {
-    opacity: 0.8;
-  }
-}
-
-.ambient-wash {
-  background:
-    radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--ui-accent) 12%, transparent), transparent 60%),
-    radial-gradient(80% 50% at 50% 110%, color-mix(in srgb, var(--ui-cyan) 6%, transparent), transparent 70%);
-  animation: ambient-breathe 9s ease-in-out infinite;
-}
+.mobile-markdown { overflow-wrap: anywhere; }
+.mobile-markdown > :first-child { margin-top: 0; }
+.mobile-markdown > :last-child { margin-bottom: 0; }
+.mobile-markdown p { margin: 0.45rem 0; }
+.mobile-markdown h1, .mobile-markdown h2, .mobile-markdown h3 { margin: 0.8rem 0 0.35rem; font-weight: 650; line-height: 1.25; }
+.mobile-markdown h1 { font-size: 1.15rem; }
+.mobile-markdown h2 { font-size: 1rem; }
+.mobile-markdown h3 { font-size: 0.9rem; }
+.mobile-markdown ul, .mobile-markdown ol { margin: 0.45rem 0; padding-left: 1.35rem; }
+.mobile-markdown li { margin: 0.2rem 0; }
+.mobile-markdown blockquote { margin: 0.55rem 0; border-left: 2px solid var(--ui-stroke-primary); padding-left: 0.7rem; color: var(--ui-text-secondary); }
+.mobile-markdown code { border-radius: 3px; background: var(--ui-bg-quaternary); padding: 0.1rem 0.25rem; font-size: 0.9em; }
+.mobile-markdown pre { margin: 0.6rem 0; overflow-x: auto; border: 1px solid var(--ui-stroke-tertiary); border-radius: 4px; background: var(--ui-bg-card); padding: 0.7rem; font-size: 0.78rem; line-height: 1.45; }
+.mobile-markdown pre code { background: transparent; padding: 0; }
+.mobile-markdown a { color: var(--ui-accent); text-decoration: underline; text-underline-offset: 2px; }
+.mobile-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0.6rem 0; }
+.mobile-markdown th, .mobile-markdown td { border: 1px solid var(--ui-stroke-tertiary); padding: 0.35rem 0.5rem; text-align: left; }

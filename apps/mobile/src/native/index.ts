@@ -16,7 +16,7 @@ export async function initializeNativeAdapters(): Promise<void> {
 
   try {
     await StatusBar.setStyle({ style: Style.Dark })
-    await StatusBar.setBackgroundColor({ color: '#0a0a0a' })
+    await StatusBar.setBackgroundColor({ color: '#0d0d0e' })
   } catch {
     // not critical
   }

@@ -10,7 +10,6 @@ import {
   refreshAccessToken,
   requestWsTicket,
   TokenRefreshAuthError,
-  type ParsedTokenSet,
   type PkceChallenge
 } from './pkce'
 import {
@@ -24,12 +23,13 @@ import {
   saveSessionToken,
   type StoredConnection
 } from './token-store'
+import { gatewayTargetHeaders, resolveGatewayRequestUrl } from '@/gateway/request-url'
 
 export type AuthState =
   | { status: 'unknown' }
   | { status: 'unauthenticated' }
   | { status: 'authenticating' }
-  | { status: 'authenticated'; gatewayUrl: string; authMode: 'oauth' | 'token'; profile: string }
+  | { status: 'authenticated'; gatewayUrl: string; authMode: 'oauth' | 'token' | 'cookie'; profile: string }
   | { status: 'auth-required' }
   | { status: 'error'; message: string }
 
@@ -96,6 +96,11 @@ export async function initializeAuth(): Promise<void> {
     return
   }
 
+  if (conn.authMode === 'cookie') {
+    $authState.set({ status: 'authenticated', gatewayUrl: conn.gatewayUrl, authMode: 'cookie', profile: conn.profile })
+    return
+  }
+
   const creds = await loadCredentials()
 
   if (!creds) {
@@ -126,7 +131,6 @@ export async function initializeAuth(): Promise<void> {
 
 export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): Promise<void> {
   cleanupLoginTransaction()
-  $authState.set({ status: 'authenticating' })
 
   try {
     const pkce = await generatePkceChallenge()
@@ -225,9 +229,11 @@ export async function loginWithToken(
   $authState.set({ status: 'authenticating' })
 
   try {
-    const base = gatewayUrl.replace(/\/+$/, '')
-    const response = await fetch(`${base}/api/status`, {
-      headers: { 'X-Hermes-Session-Token': token }
+    const base = resolveGatewayRequestUrl(gatewayUrl)
+    // /api/status is public, so a 200 there says nothing about the supplied
+    // token. Validate against a protected endpoint before persisting it.
+    const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
+      headers: { 'X-Hermes-Session-Token': token, ...gatewayTargetHeaders(gatewayUrl) }
     })
 
     if (!response.ok) {
@@ -243,6 +249,24 @@ export async function loginWithToken(
       status: 'error',
       message: error instanceof Error ? error.message : 'Connection failed'
     })
+  }
+}
+
+export async function loginWithCookie(gatewayUrl: string, profile = 'default'): Promise<void> {
+  $authState.set({ status: 'authenticating' })
+
+  try {
+    const base = resolveGatewayRequestUrl(gatewayUrl)
+    const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
+      credentials: 'include',
+      headers: gatewayTargetHeaders(gatewayUrl)
+    })
+
+    if (!response.ok) throw new Error(`Connection failed (${response.status})`)
+    await saveConnection({ gatewayUrl, authMode: 'cookie', profile })
+    $authState.set({ status: 'authenticated', gatewayUrl, authMode: 'cookie', profile })
+  } catch (error) {
+    $authState.set({ status: 'error', message: error instanceof Error ? error.message : 'Cookie sign-in failed' })
   }
 }
 
@@ -352,9 +376,9 @@ function scheduleRefresh(gatewayUrl: string): void {
 
 export async function checkGatewayStatus(
   gatewayUrl: string
-): Promise<{ authRequired: boolean; flows: string[] }> {
-  const base = gatewayUrl.replace(/\/+$/, '')
-  const response = await fetch(`${base}/api/status`)
+): Promise<{ authMode: 'oauth' | 'token'; providers: Array<{ name: string; displayName: string; supportsPassword: boolean }> }> {
+  const base = resolveGatewayRequestUrl(gatewayUrl)
+  const response = await fetch(`${base}/api/status`, { headers: gatewayTargetHeaders(gatewayUrl) })
 
   if (!response.ok) {
     throw new Error(`Gateway unreachable (${response.status})`)
@@ -362,13 +386,28 @@ export async function checkGatewayStatus(
 
   const data = (await response.json()) as {
     auth_required?: boolean
-    auth_flows?: string[]
   }
 
-  return {
-    authRequired: data.auth_required ?? false,
-    flows: data.auth_flows ?? []
+  const authMode = data.auth_required ? 'oauth' : 'token'
+  let providers: Array<{ name: string; displayName: string; supportsPassword: boolean }> = []
+
+  if (authMode === 'oauth') {
+    try {
+      const providerResponse = await fetch(`${base}/api/auth/providers`, { headers: gatewayTargetHeaders(gatewayUrl) })
+      const providerBody = (await providerResponse.json()) as { providers?: Array<Record<string, unknown>> }
+      providers = (providerBody.providers ?? [])
+        .filter(provider => typeof provider?.name === 'string' && provider.name)
+        .map(provider => ({
+          name: String(provider.name),
+          displayName: String(provider.display_name ?? provider.name),
+          supportsPassword: Boolean(provider.supports_password)
+        }))
+    } catch {
+      // Provider labels are optional metadata; the authentication mode is known.
+    }
   }
+
+  return { authMode, providers }
 }
 
 export type { StoredConnection }

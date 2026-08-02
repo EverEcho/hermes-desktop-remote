@@ -1,64 +1,97 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+
+import { configureHttpClient } from '@/gateway/http-client'
+import * as api from '@/gateway/api'
+
+function mockFetchOk(json: unknown = {}) {
+  return vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(json),
+    text: () => Promise.resolve(JSON.stringify(json))
+  })
+}
 
 describe('Git review API contract', () => {
-  it('stage sends file + path to /api/git/review/stage', () => {
-    const filePath = 'src/app.ts'
-    const repoPath = '/srv/work'
-
-    const expectedBody = { file: filePath, path: repoPath }
-    const expectedPath = '/api/git/review/stage'
-
-    expect(expectedPath).toBe('/api/git/review/stage')
-    expect(expectedBody).toEqual({ file: 'src/app.ts', path: '/srv/work' })
+  beforeEach(() => {
+    configureHttpClient({ gatewayUrl: 'https://gw.test', authMode: 'token', sessionToken: 'tok' })
+    vi.stubGlobal('fetch', mockFetchOk({ ok: true }))
   })
 
-  it('stage with null file stages all changes', () => {
-    const expectedBody = { file: null, path: '/repo' }
+  it('stage sends file + path to /api/git/review/stage', async () => {
+    await api.gitStage('src/app.ts', '/srv/work')
 
-    expect(expectedBody.file).toBeNull()
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    const body = JSON.parse(call[1].body as string)
+
+    expect(url).toContain('/api/git/review/stage')
+    expect(body).toEqual({ file: 'src/app.ts', path: '/srv/work' })
   })
 
-  it('unstage sends file + path to /api/git/review/unstage', () => {
-    const expectedPath = '/api/git/review/unstage'
-    const expectedBody = { file: 'a.txt', path: '/repo' }
+  it('stage with null file stages all changes', async () => {
+    await api.gitStage(null, '/repo')
 
-    expect(expectedPath).toBe('/api/git/review/unstage')
-    expect(expectedBody).toHaveProperty('file')
-    expect(expectedBody).toHaveProperty('path')
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse(call[1].body as string)
+
+    expect(body.file).toBeNull()
+    expect(body.path).toBe('/repo')
   })
 
-  it('commit sends message + path + push flag to /api/git/review/commit', () => {
-    const expectedPath = '/api/git/review/commit'
-    const expectedBody = { message: 'fix: thing', path: '/repo', push: false }
+  it('unstage sends file + path to /api/git/review/unstage', async () => {
+    await api.gitUnstage('a.txt', '/repo')
 
-    expect(expectedPath).toBe('/api/git/review/commit')
-    expect(expectedBody).toEqual({ message: 'fix: thing', path: '/repo', push: false })
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    const body = JSON.parse(call[1].body as string)
+
+    expect(url).toContain('/api/git/review/unstage')
+    expect(body).toEqual({ file: 'a.txt', path: '/repo' })
   })
 
-  it('push sends path to /api/git/review/push', () => {
-    const expectedPath = '/api/git/review/push'
-    const expectedBody = { path: '/repo' }
+  it('commit sends message + path + push flag to /api/git/review/commit', async () => {
+    await api.gitCommit('fix: thing', '/repo', false)
 
-    expect(expectedPath).toBe('/api/git/review/push')
-    expect(expectedBody).toEqual({ path: '/repo' })
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    const body = JSON.parse(call[1].body as string)
+
+    expect(url).toContain('/api/git/review/commit')
+    expect(body).toEqual({ message: 'fix: thing', path: '/repo', push: false })
   })
 
-  it('file-diff uses query params file + path (not cwd)', () => {
-    const filePath = 'src/a b.ts'
-    const repoPath = '/repo'
-    const params = new URLSearchParams({ file: filePath, path: repoPath })
-    const url = `/api/git/file-diff?${params.toString()}`
+  it('push sends path to /api/git/review/push', async () => {
+    await api.gitPush('/repo')
 
-    expect(url).toBe('/api/git/file-diff?file=src%2Fa+b.ts&path=%2Frepo')
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    const body = JSON.parse(call[1].body as string)
+
+    expect(url).toContain('/api/git/review/push')
+    expect(body).toEqual({ path: '/repo' })
+  })
+
+  it('file-diff uses query params file + path (not cwd)', async () => {
+    await api.gitFileDiff('src/a b.ts', '/repo')
+
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+
+    expect(url).toContain('/api/git/file-diff?')
+    expect(url).toContain('file=')
+    expect(url).toContain('path=')
     expect(url).not.toContain('cwd')
   })
 
-  it('revert sends file + path to /api/git/review/revert', () => {
-    const expectedPath = '/api/git/review/revert'
-    const expectedBody = { file: 'b.txt', path: '/repo' }
+  it('revert sends file + path to /api/git/review/revert', async () => {
+    await api.gitRevert('b.txt', '/repo')
 
-    expect(expectedPath).toBe('/api/git/review/revert')
-    expect(expectedBody).toHaveProperty('file')
-    expect(expectedBody).toHaveProperty('path')
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    const body = JSON.parse(call[1].body as string)
+
+    expect(url).toContain('/api/git/review/revert')
+    expect(body).toEqual({ file: 'b.txt', path: '/repo' })
   })
 })

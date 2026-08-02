@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '@nanostores/react'
 
 import { $authState, initializeAuth } from '@/auth'
@@ -10,6 +10,7 @@ import { AppShell } from '@/app/AppShell'
 
 export function App() {
   const authState = useStore($authState)
+  const [connectionDialogOpen, setConnectionDialogOpen] = useState(false)
 
   useEffect(() => {
     void initializeAuth()
@@ -23,9 +24,15 @@ export function App() {
       return
     }
 
+    let cancelled = false
+
     void (async () => {
       const sessionToken =
         authState.authMode === 'token' ? await loadSessionToken() : null
+
+      if (cancelled) {
+        return
+      }
 
       configureHttpClient({
         gatewayUrl: authState.gatewayUrl,
@@ -35,13 +42,17 @@ export function App() {
       })
 
       await connectGateway(authState.profile)
-      startEventRouter()
+
+      if (!cancelled) {
+        startEventRouter()
+      }
     })()
 
     return () => {
+      cancelled = true
       stopEventRouter()
     }
-  }, [authState.status, authState.status === 'authenticated' ? authState.gatewayUrl : ''])
+  }, [authState])
 
   if (authState.status === 'unknown' || authState.status === 'authenticating') {
     return (
@@ -52,17 +63,23 @@ export function App() {
     )
   }
 
-  if (
+  const needsConnection =
     authState.status === 'unauthenticated' ||
     authState.status === 'error' ||
     authState.status === 'auth-required'
-  ) {
-    return (
-      <LoginScreen
-        error={authState.status === 'error' ? authState.message : undefined}
-      />
-    )
+
+  if (needsConnection) {
+    return <LoginScreen error={authState.status === 'error' ? authState.message : undefined} open />
   }
 
-  return <AppShell />
+  return (
+    <>
+      <AppShell onChangeGateway={() => setConnectionDialogOpen(true)} />
+      <LoginScreen
+        initialGatewayUrl={authState.gatewayUrl}
+        onClose={() => setConnectionDialogOpen(false)}
+        open={connectionDialogOpen}
+      />
+    </>
+  )
 }

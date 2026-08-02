@@ -3,6 +3,7 @@ import { cn } from './utils'
 export interface ActionSheetAction {
   id: string
   label: string
+  icon?: React.ReactNode
   destructive?: boolean
   disabled?: boolean
 }
@@ -22,10 +23,10 @@ export function ActionSheet({ open, onClose, title, actions, onAction }: ActionS
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative mx-2 mb-[calc(0.5rem+var(--safe-area-bottom))] rounded-2xl border border-(--stroke-nous) shadow-(--shadow-nous) bg-[color-mix(in_srgb,var(--ui-bg-card)_92%,transparent)] backdrop-blur-xl overflow-hidden">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative mx-3 mb-[calc(0.5rem+var(--safe-area-bottom))] rounded-xl border border-(--stroke-nous) shadow-(--shadow-nous) bg-(--ui-bg-elevated) overflow-hidden">
         {title && (
-          <div className="px-4 py-3 text-center text-(--conversation-tool-font-size) text-(--ui-text-tertiary) border-b border-(--ui-stroke-tertiary)">
+          <div className="px-4 py-2.5 text-center text-(--conversation-tool-font-size) text-(--ui-text-tertiary) border-b border-(--ui-stroke-tertiary)">
             {title}
           </div>
         )}
@@ -35,9 +36,9 @@ export function ActionSheet({ open, onClose, title, actions, onAction }: ActionS
             key={action.id}
             disabled={action.disabled}
             className={cn(
-              'w-full px-4 py-3.5 text-center text-[1rem] border-b border-(--ui-stroke-tertiary) last:border-0',
-              'active:bg-(--ui-row-active-background) transition-colors',
-              action.destructive ? 'text-(--ui-red)' : 'text-(--ui-accent)',
+              'w-full flex items-center gap-3 px-4 py-3 border-b border-(--ui-stroke-quaternary) last:border-0',
+              'active:bg-(--ui-row-active-background) transition-colors duration-100',
+              action.destructive ? 'text-(--ui-red)' : 'text-(--ui-text-primary)',
               action.disabled && 'opacity-40'
             )}
             onClick={() => {
@@ -45,12 +46,13 @@ export function ActionSheet({ open, onClose, title, actions, onAction }: ActionS
               onClose()
             }}
           >
-            {action.label}
+            {action.icon && <span className="size-4 shrink-0 grid place-items-center">{action.icon}</span>}
+            <span className="text-sm">{action.label}</span>
           </button>
         ))}
 
         <button
-          className="w-full px-4 py-3.5 text-center text-[1rem] font-semibold text-(--ui-text-secondary) active:bg-(--ui-row-active-background)"
+          className="w-full px-4 py-3 text-center text-sm font-medium text-(--ui-text-secondary) active:bg-(--ui-row-active-background)"
           onClick={onClose}
         >
           Cancel

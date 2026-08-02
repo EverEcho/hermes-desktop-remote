@@ -6,15 +6,16 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
   return (
     <input
       className={cn(
-        'w-full rounded-[var(--btn-radius)] bg-(--ui-bg-input)',
-        'border border-(--ui-stroke-secondary) shadow-[var(--dt-input-inset)]',
-        'px-3 py-1.5 text-(--conversation-text-font-size) text-(--ui-text-primary)',
+        'desktop-input-chrome w-full min-w-0 rounded-[var(--btn-radius)] border',
+        'px-2.5 py-1.5 text-xs leading-4 text-(--ui-text-primary)',
         'placeholder:text-(--ui-text-quaternary)',
-        'outline-none transition-colors',
-        'focus:border-(--ui-accent) focus:shadow-none',
-        'disabled:opacity-50',
+        'disabled:pointer-events-none disabled:opacity-50',
         className
       )}
+      autoCapitalize="off"
+      autoComplete="off"
+      autoCorrect="off"
+      spellCheck={false}
       {...props}
     />
   )
