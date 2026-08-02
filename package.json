@@ -5,13 +5,17 @@
   "description": "A Desktop-only Hermes client fork with remote Gateway as a first-class mode.",
   "workspaces": [
     "apps/desktop",
-    "apps/shared"
+    "apps/shared",
+    "apps/mobile"
   ],
   "scripts": {
     "dev": "npm run dev --workspace apps/desktop",
     "build": "npm run build --workspace apps/desktop",
     "test": "npm run test --workspace apps/desktop",
     "typecheck": "npm run typecheck --workspace apps/desktop",
+    "dev:mobile": "npm run dev --workspace apps/mobile",
+    "build:mobile": "npm run build --workspace apps/mobile",
+    "typecheck:mobile": "npm run typecheck --workspace apps/mobile",
     "sync:upstream": "./scripts/sync-upstream-desktop.sh"
   },
   "engines": {

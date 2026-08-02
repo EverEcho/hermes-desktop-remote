@@ -6,6 +6,9 @@ apps/desktop/release/
 apps/desktop/.vite/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+apps/mobile/dist/
+apps/mobile/ios/
+apps/mobile/android/
 .DS_Store
 .env
 .env.*
