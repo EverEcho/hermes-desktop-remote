@@ -13,6 +13,8 @@ interface CronPageProps {
 export function CronPage({ open, onClose }: CronPageProps) {
   const [jobs, setJobs] = useState<CronJob[]>([])
   const [loading, setLoading] = useState(false)
+  const [editor, setEditor] = useState<CronJob | 'new' | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -20,10 +22,11 @@ export function CronPage({ open, onClose }: CronPageProps) {
     }
 
     setLoading(true)
+    setError(null)
     api
       .getCronJobs()
       .then(setJobs)
-      .catch(() => {})
+      .catch(() => setError('Could not load cron jobs.'))
       .finally(() => setLoading(false))
   }, [open])
 
@@ -44,11 +47,29 @@ export function CronPage({ open, onClose }: CronPageProps) {
     }
   }
 
+  const deleteJob = async (jobId: string) => {
+    if (!window.confirm('Delete this cron job? This cannot be undone.')) {
+      return
+    }
+
+    try {
+      await api.deleteCronJob(jobId)
+      setJobs(previous => previous.filter(job => job.id !== jobId))
+    } catch {
+      setError('Could not delete cron job.')
+    }
+  }
+
   return (
     <BottomSheet open={open} onClose={onClose} title="Cron Jobs" fullScreen>
+      <div className="mb-3 flex justify-end">
+        <button className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white" onClick={() => setEditor('new')}>New cron</button>
+      </div>
       {loading && (
         <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">Loading…</p>
       )}
+
+      {error && <p className="mb-3 text-(--conversation-caption-font-size) text-(--ui-red)">{error}</p>}
 
       {!loading && jobs.length === 0 && (
         <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">
@@ -98,10 +119,45 @@ export function CronPage({ open, onClose }: CronPageProps) {
               >
                 Run now
               </button>
+              <button className="ml-auto text-(--conversation-tool-font-size) text-(--ui-text-tertiary)" onClick={() => setEditor(job)}>Edit</button>
+              <button className="text-(--conversation-tool-font-size) text-(--ui-red)" onClick={() => void deleteJob(job.id)}>Delete</button>
             </div>
           </div>
         ))}
       </div>
+
+      {editor && <CronEditor job={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} onSaved={job => { setJobs(previous => editor === 'new' ? [...previous, job] : previous.map(row => row.id === job.id ? job : row)); setEditor(null) }} />}
     </BottomSheet>
   )
+}
+
+function CronEditor({ job, onClose, onSaved }: { job?: CronJob; onClose: () => void; onSaved: (job: CronJob) => void }) {
+  const [name, setName] = useState(job?.name ?? '')
+  const [cron, setCron] = useState(job?.cron ?? '')
+  const [prompt, setPrompt] = useState(job?.prompt ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const valid = name.trim() && cron.trim() && prompt.trim()
+
+  const save = async () => {
+    if (!valid) return
+    setSaving(true)
+    setError(null)
+    try {
+      const saved = job
+        ? await api.updateCronJob(job.id, { name: name.trim(), cron: cron.trim(), prompt: prompt.trim() })
+        : await api.createCronJob({ name: name.trim(), cron: cron.trim(), prompt: prompt.trim() })
+      onSaved(saved)
+    } catch {
+      setError('Could not save cron job.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return <div className="fixed inset-0 z-[60] flex items-end bg-black/40" onClick={onClose}><div className="w-full rounded-t-xl bg-(--ui-bg-elevated) p-4 pb-[calc(1rem+var(--safe-area-bottom))]" onClick={event => event.stopPropagation()}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold text-(--ui-text-primary)">{job ? 'Edit cron' : 'New cron'}</h2><button className="text-xs text-(--ui-text-tertiary)" onClick={onClose}>Close</button></div><EditorField label="Name" value={name} onChange={setName} placeholder="Daily summary" /><EditorField label="Schedule" value={cron} onChange={setCron} placeholder="0 9 * * 1-5" /><label className="mb-3 block"><span className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">Prompt</span><textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={4} className="w-full resize-none rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2.5 py-2 text-xs text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" placeholder="What should Hermes do?" /></label>{error && <p className="mb-3 text-xs text-(--ui-red)">{error}</p>}<button disabled={!valid || saving} onClick={() => void save()} className="w-full rounded-md bg-(--ui-accent) px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{saving ? 'Saving…' : 'Save cron'}</button></div></div>
+}
+
+function EditorField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  return <label className="mb-3 block"><span className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{label}</span><input value={value} onChange={event => onChange(event.target.value)} placeholder={placeholder} className="w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2.5 py-2 text-xs text-(--ui-text-primary) outline-none placeholder:text-(--ui-text-quaternary) focus:border-(--ui-accent)" /></label>
 }

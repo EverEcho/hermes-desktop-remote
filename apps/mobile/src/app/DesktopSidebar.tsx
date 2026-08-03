@@ -9,7 +9,7 @@ interface DesktopSidebarProps {
   onSelect: (id: string) => void
   onNew: () => void
   onRefresh: () => void
-  onFeature: (feature: 'skills' | 'messaging' | 'workspace') => void
+  onFeature: (feature: 'skills' | 'messaging' | 'workspace' | 'cron' | 'settings') => void
 }
 
 export function DesktopSidebar(props: DesktopSidebarProps) {
@@ -17,15 +17,16 @@ export function DesktopSidebar(props: DesktopSidebarProps) {
   const normalizedSearch = search.trim().toLowerCase()
   const filtered = useMemo(() => normalizedSearch ? props.sessions.filter(session => `${session.title || ''} ${session.preview || ''}`.toLowerCase().includes(normalizedSearch)) : props.sessions, [normalizedSearch, props.sessions])
   const pinned = filtered.filter(session => session.pinned)
-  const recent = filtered.filter(session => !session.pinned).slice(0, 24)
+  const unpinned = filtered.filter(session => !session.pinned)
+  const recent = unpinned.filter(session => !session.cwd).slice(0, 24)
   const projects = useMemo(() => {
     const map = new Map<string, SessionInfo[]>()
-    for (const session of filtered) {
-      const name = session.cwd?.split('/').filter(Boolean).pop() || 'default'
+    for (const session of unpinned.filter(session => session.cwd)) {
+      const name = session.cwd!.split('/').filter(Boolean).pop() || 'default'
       map.set(name, [...(map.get(name) || []), session])
     }
     return [...map.entries()]
-  }, [filtered])
+  }, [unpinned])
 
   return (
     <aside className="hidden w-[13.25rem] shrink-0 flex-col border-r border-(--ui-stroke-tertiary) bg-(--ui-bg-sidebar) md:flex">
@@ -34,6 +35,7 @@ export function DesktopSidebar(props: DesktopSidebarProps) {
         <SidebarAction icon="⌁" label="Skills & tools" onClick={() => props.onFeature('skills')} />
         <SidebarAction icon="□" label="Message center" onClick={() => props.onFeature('messaging')} />
         <SidebarAction icon="▣" label="Workspace" onClick={() => props.onFeature('workspace')} />
+        <SidebarAction icon="◷" label="Cron jobs" onClick={() => props.onFeature('cron')} />
       </nav>
       <label className="mx-2 mb-2 flex items-center gap-1.5 rounded bg-(--ui-bg-quaternary) px-2 py-1 text-xs text-(--ui-text-tertiary)">
         <span>⌕</span>
@@ -50,7 +52,7 @@ export function DesktopSidebar(props: DesktopSidebarProps) {
           {props.loading && !filtered.length ? <div className="px-2 py-4 text-xs text-(--ui-text-quaternary)">Loading…</div> : recent.map(session => <SessionItem key={session.id} session={session} onSelect={props.onSelect} />)}
         </SidebarSection>
       </div>
-      <div className="border-t border-(--ui-stroke-tertiary) p-2 text-xs text-(--ui-text-tertiary)"><SidebarAction icon="⚙" label="Settings" onClick={() => props.onFeature('workspace')} /></div>
+      <div className="border-t border-(--ui-stroke-tertiary) p-2 text-xs text-(--ui-text-tertiary)"><SidebarAction icon="⚙" label="Settings" onClick={() => props.onFeature('settings')} /></div>
     </aside>
   )
 }

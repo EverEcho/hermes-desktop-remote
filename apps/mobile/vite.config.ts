@@ -11,13 +11,32 @@ function dynamicGatewayProxy(): Plugin {
   const proxy = httpProxy.createProxyServer({})
   const isGatewayPath = (url = '') => /^\/(?:api|auth|login)(?:\/|\?|$)/.test(url)
 
+  proxy.on('error', (err, req, resOrSocket) => {
+    console.error(`[gateway-proxy] proxy error for ${req.url}:`, err.message)
+    if ('destroy' in resOrSocket && typeof resOrSocket.destroy === 'function') {
+      resOrSocket.destroy()
+    }
+  })
+
   proxy.on('proxyRes', (proxyRes, req) => {
     const target = (req as import('http').IncomingMessage & { __hermesTarget?: string }).__hermesTarget
-    if (!target || !req.url?.startsWith('/login')) return
+    if (!target) return
 
-    const existing = proxyRes.headers['set-cookie'] || []
-    const targetCookie = `hermes_gateway_target=${encodeURIComponent(target)}; Path=/; SameSite=Lax`
-    proxyRes.headers['set-cookie'] = [...existing, targetCookie]
+    // The browser talks only to Vite in H5 development. Make upstream auth
+    // cookies valid for that same local origin: a remote Domain or Secure
+    // attribute otherwise leaves HTTP APIs and /api/ws unauthenticated even
+    // after a successful browser sign-in. This proxy only exists in dev.
+    const upstreamCookies = proxyRes.headers['set-cookie']
+    const cookies = (Array.isArray(upstreamCookies) ? upstreamCookies : upstreamCookies ? [upstreamCookies] : [])
+      .map(cookie => cookie.replace(/;\s*Domain=[^;]*/gi, '').replace(/;\s*Secure/gi, ''))
+
+    if (req.url?.startsWith('/login')) {
+      cookies.push(`hermes_gateway_target=${encodeURIComponent(target)}; Path=/; SameSite=Lax`)
+    }
+
+    if (cookies.length > 0) {
+      proxyRes.headers['set-cookie'] = cookies
+    }
   })
 
   const targetFromRequest = (req: import('http').IncomingMessage): string | null => {
@@ -61,6 +80,7 @@ function dynamicGatewayProxy(): Plugin {
     const requestUrl = new URL(req.url || '/', 'http://vite.local')
     requestUrl.searchParams.delete(TARGET_QUERY)
     req.url = `${requestUrl.pathname}${requestUrl.search}`
+    if (req.headers.origin) req.headers.origin = target
     proxy.web(req, res, {
       target,
       changeOrigin: true,
@@ -89,7 +109,13 @@ function dynamicGatewayProxy(): Plugin {
         const requestUrl = new URL(req.url || '/', 'http://vite.local')
         requestUrl.searchParams.delete(TARGET_QUERY)
         req.url = `${requestUrl.pathname}${requestUrl.search}`
-        proxy.ws(req, socket, head, { target, changeOrigin: true, secure: false })
+        if (req.headers.origin) req.headers.origin = target
+        proxy.ws(req, socket, head, { target, changeOrigin: true, secure: false }, error => {
+          if (error) {
+            console.error(`[gateway-proxy] WebSocket proxy to ${target} failed:`, error.message)
+            socket.destroy()
+          }
+        })
       })
     }
   }

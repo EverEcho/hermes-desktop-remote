@@ -6,6 +6,8 @@ import type {
   GitFileDiffResponse,
   GitStatusResponse,
   HermesConfig,
+  MessagingPlatformUpdate,
+  MessagingPlatformsResponse,
   ModelInfoResponse,
   ModelOptionsResponse,
   PaginatedSessions,
@@ -238,6 +240,27 @@ export function deleteCronJob(jobId: string): Promise<{ ok: boolean }> {
 
 export function getPairing(): Promise<PairingResponse> {
   return apiRequest<PairingResponse>('/api/pairing')
+}
+
+export function getMessagingPlatforms(): Promise<MessagingPlatformsResponse> {
+  return apiRequest<MessagingPlatformsResponse>('/api/messaging/platforms')
+}
+
+export function updateMessagingPlatform(
+  platformId: string,
+  body: MessagingPlatformUpdate
+): Promise<{ ok: boolean; platform: string }> {
+  return apiRequest<{ ok: boolean; platform: string }>(
+    `/api/messaging/platforms/${encodeURIComponent(platformId)}`,
+    { method: 'PUT', body }
+  )
+}
+
+export function testMessagingPlatform(platformId: string): Promise<{ ok: boolean; message: string; state?: string | null }> {
+  return apiRequest<{ ok: boolean; message: string; state?: string | null }>(
+    `/api/messaging/platforms/${encodeURIComponent(platformId)}/test`,
+    { method: 'POST' }
+  )
 }
 
 export function approvePairing(platform: string, requestId: string): Promise<{ ok: boolean }> {

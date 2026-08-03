@@ -19,15 +19,31 @@ export interface MobileSession extends SessionInfo {
   unread?: boolean
 }
 
+export type MobileMessagePart =
+  | { type: 'text'; text: string }
+  | { type: 'reasoning'; reasoning: string }
+  | {
+      type: 'tool-call'
+      id: string
+      name: string
+      status: 'running' | 'complete' | 'error'
+      args?: unknown
+      result?: unknown
+      summary?: string
+      durationS?: number
+      inlineDiff?: string
+    }
+
 export interface MobileMessage {
   id: string
   role: SessionMessage['role']
-  content: string
-  reasoning?: string
+  parts: MobileMessagePart[]
   timestamp?: number
   pending?: boolean
+  failed?: boolean
   error?: string
-  toolCalls?: MobileToolCall[]
+  retryText?: string
+  retryUserMessageId?: string
   attachments?: MobileAttachment[]
   rowId?: number
 }

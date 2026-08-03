@@ -20,6 +20,9 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const [gitStatus, setGitStatus] = useState<GitStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [fileContent, setFileContent] = useState<{ path: string; content: string } | null>(null)
+  const [gitWorking, setGitWorking] = useState<string | null>(null)
+  const [commitMessage, setCommitMessage] = useState('')
+  const [gitError, setGitError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -70,6 +73,46 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   }
 
   const parentPath = currentPath.replace(/\/[^/]+\/?$/, '') || '/'
+
+  const refreshGitStatus = async () => {
+    try {
+      setGitStatus(await api.gitStatus(currentPath))
+    } catch {
+      setGitStatus(null)
+    }
+  }
+
+  const updateStage = async (file: string, staged: boolean) => {
+    setGitWorking(file)
+    setGitError(null)
+    try {
+      if (staged) {
+        await api.gitUnstage(file, currentPath)
+      } else {
+        await api.gitStage(file, currentPath)
+      }
+      await refreshGitStatus()
+    } catch {
+      setGitError(`Could not ${staged ? 'unstage' : 'stage'} ${file}.`)
+    } finally {
+      setGitWorking(null)
+    }
+  }
+
+  const commit = async () => {
+    if (!commitMessage.trim()) return
+    setGitWorking('commit')
+    setGitError(null)
+    try {
+      await api.gitCommit(commitMessage.trim(), currentPath)
+      setCommitMessage('')
+      await refreshGitStatus()
+    } catch {
+      setGitError('Could not create commit.')
+    } finally {
+      setGitWorking(null)
+    }
+  }
 
   return (
     <BottomSheet open={open} onClose={onClose} title="Workspace" fullScreen>
@@ -177,35 +220,32 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
               {gitStatus.staged.length > 0 && (
                 <div>
                   <ChangeLabel label="Staged" color="text-(--ui-green)" />
-                  {gitStatus.staged.map(f => (
-                    <p key={f} className="text-(--conversation-tool-font-size) text-(--ui-text-secondary) font-mono py-0.5 truncate">
-                      {f}
-                    </p>
-                  ))}
+                  {gitStatus.staged.map(f => <GitFileRow key={f} file={f} action="Unstage" disabled={gitWorking !== null} onAction={() => void updateStage(f, true)} />)}
                 </div>
               )}
 
               {gitStatus.modified.length > 0 && (
                 <div>
                   <ChangeLabel label="Modified" color="text-(--ui-yellow)" />
-                  {gitStatus.modified.map(f => (
-                    <p key={f} className="text-(--conversation-tool-font-size) text-(--ui-text-secondary) font-mono py-0.5 truncate">
-                      {f}
-                    </p>
-                  ))}
+                  {gitStatus.modified.map(f => <GitFileRow key={f} file={f} action="Stage" disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
                 </div>
               )}
 
               {gitStatus.untracked.length > 0 && (
                 <div>
                   <ChangeLabel label="Untracked" color="text-(--ui-text-tertiary)" />
-                  {gitStatus.untracked.map(f => (
-                    <p key={f} className="text-(--conversation-tool-font-size) text-(--ui-text-secondary) font-mono py-0.5 truncate">
-                      {f}
-                    </p>
-                  ))}
+                  {gitStatus.untracked.map(f => <GitFileRow key={f} file={f} action="Stage" disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
                 </div>
               )}
+
+              {gitStatus.staged.length > 0 && (
+                <div className="border-t border-(--ui-stroke-tertiary) pt-3">
+                  <label className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">Commit message</label>
+                  <div className="flex gap-2"><input value={commitMessage} onChange={event => setCommitMessage(event.target.value)} placeholder="Describe this change" className="min-w-0 flex-1 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" /><button disabled={!commitMessage.trim() || gitWorking !== null} onClick={() => void commit()} className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white disabled:opacity-50">Commit</button></div>
+                </div>
+              )}
+
+              {gitError && <p className="text-(--conversation-tool-font-size) text-(--ui-red)">{gitError}</p>}
 
               {gitStatus.staged.length === 0 &&
                 gitStatus.modified.length === 0 &&
@@ -220,6 +260,10 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
       )}
     </BottomSheet>
   )
+}
+
+function GitFileRow({ file, action, disabled, onAction }: { file: string; action: string; disabled: boolean; onAction: () => void }) {
+  return <div className="flex items-center gap-2 py-1"><p className="min-w-0 flex-1 truncate font-mono text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{file}</p><button disabled={disabled} onClick={onAction} className="shrink-0 text-(--conversation-tool-font-size) text-(--ui-accent) disabled:opacity-50">{action}</button></div>
 }
 
 function ChangeLabel({ label, color }: { label: string; color: string }) {

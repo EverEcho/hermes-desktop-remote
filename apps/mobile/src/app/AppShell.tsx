@@ -18,7 +18,7 @@ import { WorkspaceSheet } from '@/workspace/WorkspaceSheet'
 import { SkillsPage } from '@/features/SkillsPage'
 import { CronPage } from '@/features/CronPage'
 import { MessagingPage } from '@/features/MessagingPage'
-import { DesktopSidebar } from './DesktopSidebar'
+import { Sidebar } from './Sidebar'
 import { NewSessionHome } from './NewSessionHome'
 
 export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
@@ -59,75 +59,66 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
     void reconnectGateway()
   }, [])
 
+  const handleFeature = useCallback(
+    (feature: 'skills' | 'messaging' | 'workspace' | 'cron' | 'settings' | 'gateway' | 'logout') => {
+      setDrawerOpen(false)
+      if (feature === 'skills') setSkillsOpen(true)
+      if (feature === 'messaging') setMessagingOpen(true)
+      if (feature === 'workspace') setWorkspaceOpen(true)
+      if (feature === 'cron') setCronOpen(true)
+      if (feature === 'settings') setSettingsOpen(true)
+      if (feature === 'gateway') onChangeGateway()
+      if (feature === 'logout') void logout()
+    },
+    [onChangeGateway]
+  )
+
   return (
     <div className="h-full flex bg-(--ui-bg-chrome)">
-      <DesktopSidebar
-        sessions={sessions}
-        loading={sessionsLoading}
-        activeSessionId={activeSessionId}
-        onSelect={handleSelectSession}
-        onNew={handleNewSession}
-        onRefresh={() => void refreshSessions()}
-        onFeature={feature => {
-          if (feature === 'skills') setSkillsOpen(true)
-          if (feature === 'messaging') setMessagingOpen(true)
-          if (feature === 'workspace') setWorkspaceOpen(true)
-        }}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-      <MobileHeader
-        onMenuPress={() => setDrawerOpen(true)}
-        onSettingsPress={() => setSettingsOpen(true)}
-        connectionState={connectionState}
-        onRetry={handleRetry}
-        title={activeSessionId ? undefined : 'RHermes'}
-        onBack={activeSessionId ? handleBack : undefined}
-        onWorkspacePress={activeSessionId ? () => setWorkspaceOpen(true) : undefined}
-      />
-
-      <div className="flex-1 overflow-hidden">
-        {activeSessionId ? (
-          <SessionDetail sessionId={activeSessionId} />
-        ) : (
-          <NewSessionHome />
-        )}
+      {/* Desktop Sidebar (hidden on mobile) */}
+      <div className="hidden md:flex shrink-0">
+        <Sidebar
+          sessions={sessions}
+          loading={sessionsLoading}
+          activeSessionId={activeSessionId}
+          onSelect={handleSelectSession}
+          onNew={handleNewSession}
+          onRefresh={() => void refreshSessions()}
+          onFeature={handleFeature}
+        />
       </div>
 
-      <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileHeader
+          onMenuPress={() => setDrawerOpen(true)}
+          onSettingsPress={() => setSettingsOpen(true)}
+          connectionState={connectionState}
+          onRetry={handleRetry}
+          title={activeSessionId ? undefined : 'RHermes'}
+          onWorkspacePress={activeSessionId ? () => setWorkspaceOpen(true) : undefined}
+        />
+
         <div className="flex-1 overflow-hidden">
-          <SessionList
+          {activeSessionId ? (
+            <SessionDetail sessionId={activeSessionId} />
+          ) : (
+            <NewSessionHome />
+          )}
+        </div>
+
+        {/* Mobile Drawer (uses identical unified Sidebar component) */}
+        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
+          <Sidebar
             sessions={sessions}
             loading={sessionsLoading}
+            activeSessionId={activeSessionId}
             onSelect={handleSelectSession}
             onNew={handleNewSession}
             onRefresh={() => void refreshSessions()}
+            onFeature={handleFeature}
             inDrawer
           />
-        </div>
-        <div className="px-2 py-2 border-t border-(--ui-stroke-tertiary) space-y-px">
-          <MobileListRow onClick={() => { setDrawerOpen(false); setWorkspaceOpen(true) }}>
-            <span className="text-xs text-(--ui-text-secondary)">Workspace</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => { setDrawerOpen(false); setSkillsOpen(true) }}>
-            <span className="text-xs text-(--ui-text-secondary)">Skills</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => { setDrawerOpen(false); setCronOpen(true) }}>
-            <span className="text-xs text-(--ui-text-secondary)">Cron Jobs</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => { setDrawerOpen(false); setMessagingOpen(true) }}>
-            <span className="text-xs text-(--ui-text-secondary)">Messaging</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => { setDrawerOpen(false); setSettingsOpen(true) }}>
-            <span className="text-xs text-(--ui-text-secondary)">Settings</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => { setDrawerOpen(false); onChangeGateway() }}>
-            <span className="text-xs text-(--ui-text-secondary)">Change gateway</span>
-          </MobileListRow>
-          <MobileListRow onClick={() => void logout()}>
-            <span className="text-xs text-(--ui-red)">Sign Out</span>
-          </MobileListRow>
-        </div>
-      </Drawer>
+        </Drawer>
 
       <MobileSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <WorkspaceSheet open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} cwd={currentCwd || undefined} />

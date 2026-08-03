@@ -5,6 +5,31 @@ import { getWsTicket, $authState } from '@/auth'
 import { getGatewayBaseUrl, setActiveProfile } from './http-client'
 import { gatewayTargetHeaders } from './request-url'
 
+/**
+ * Obtain a one-time WS ticket using cookie authentication.
+ * In H5 dev mode the Vite proxy forwards browser cookies to the real gateway,
+ * so we can request a ticket via a normal fetch with `credentials: 'include'`.
+ */
+async function getCookieWsTicket(baseUrl: string, gatewayUrl: string): Promise<string> {
+  const response = await fetch(`${baseUrl}/api/auth/ws-ticket`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { ...gatewayTargetHeaders(gatewayUrl) }
+  })
+
+  if (!response.ok) {
+    throw new Error(`WS ticket request failed (${response.status})`)
+  }
+
+  const data = (await response.json()) as { ticket?: string }
+
+  if (typeof data.ticket !== 'string' || !data.ticket) {
+    throw new Error('Gateway did not return a WS ticket')
+  }
+
+  return data.ticket
+}
+
 export class MobileGateway extends JsonRpcGatewayClient {
   constructor() {
     super({
@@ -99,9 +124,16 @@ async function doConnect(): Promise<void> {
       const wsBase = baseUrl.replace(/^http/, 'ws')
       wsUrl = `${wsBase}/api/ws?token=${encodeURIComponent(token)}`
     } else {
+      // Cookie mode (H5 dev): the backend WS endpoint does not accept cookie
+      // auth directly. Fetch a one-time ws-ticket via HTTP (cookies are
+      // forwarded by the Vite proxy) then connect the WebSocket with that ticket.
+      const ticket = await getCookieWsTicket(baseUrl, authState.gatewayUrl)
       const wsBase = baseUrl.replace(/^http/, 'ws')
       const target = gatewayTargetHeaders(authState.gatewayUrl)['X-Hermes-Gateway-Target']
-      wsUrl = `${wsBase}/api/ws${target ? `?__gateway_target=${encodeURIComponent(target)}` : ''}`
+      const params = new URLSearchParams()
+      params.set('ticket', ticket)
+      if (target) params.set('__gateway_target', target)
+      wsUrl = `${wsBase}/api/ws?${params.toString()}`
     }
 
     if (!gateway) {

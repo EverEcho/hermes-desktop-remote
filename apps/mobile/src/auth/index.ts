@@ -97,7 +97,15 @@ export async function initializeAuth(): Promise<void> {
   }
 
   if (conn.authMode === 'cookie') {
-    $authState.set({ status: 'authenticated', gatewayUrl: conn.gatewayUrl, authMode: 'cookie', profile: conn.profile })
+    try {
+      await verifyCookieSession(conn.gatewayUrl)
+      $authState.set({ status: 'authenticated', gatewayUrl: conn.gatewayUrl, authMode: 'cookie', profile: conn.profile })
+    } catch {
+      // The persisted connection only records the gateway URL; the browser
+      // session cookie itself can expire or be cleared. Do not reconnect the
+      // WebSocket against a known-invalid cookie and leave it in a retry loop.
+      $authState.set({ status: 'unauthenticated' })
+    }
     return
   }
 
@@ -256,17 +264,23 @@ export async function loginWithCookie(gatewayUrl: string, profile = 'default'): 
   $authState.set({ status: 'authenticating' })
 
   try {
-    const base = resolveGatewayRequestUrl(gatewayUrl)
-    const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
-      credentials: 'include',
-      headers: gatewayTargetHeaders(gatewayUrl)
-    })
-
-    if (!response.ok) throw new Error(`Connection failed (${response.status})`)
+    await verifyCookieSession(gatewayUrl)
     await saveConnection({ gatewayUrl, authMode: 'cookie', profile })
     $authState.set({ status: 'authenticated', gatewayUrl, authMode: 'cookie', profile })
   } catch (error) {
     $authState.set({ status: 'error', message: error instanceof Error ? error.message : 'Cookie sign-in failed' })
+  }
+}
+
+async function verifyCookieSession(gatewayUrl: string): Promise<void> {
+  const base = resolveGatewayRequestUrl(gatewayUrl)
+  const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
+    credentials: 'include',
+    headers: gatewayTargetHeaders(gatewayUrl)
+  })
+
+  if (!response.ok) {
+    throw new Error(`Connection failed (${response.status})`)
   }
 }
 

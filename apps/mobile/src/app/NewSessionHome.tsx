@@ -5,17 +5,21 @@ import { cn } from '@/ui/utils'
 export function NewSessionHome() {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const submit = async () => {
     const value = text.trim()
     if (!value || sending) return
     setSending(true)
+    setError(null)
     try {
       const id = await createNewSession()
       if (id) {
         setText('')
         await sendMessage(value)
+      } else {
+        setError('Unable to start a conversation. Check the gateway connection and try again.')
       }
     } finally {
       setSending(false)
@@ -48,6 +52,7 @@ export function NewSessionHome() {
           />
           <button disabled={!text.trim() || sending} onClick={() => void submit()} className="rounded-full bg-(--ui-base) p-2 text-(--ui-bg-card) disabled:opacity-30" aria-label="Start conversation">↑</button>
         </div>
+        {error && <p className="px-3 pb-2 text-(--conversation-tool-font-size) text-(--ui-red)">{error}</p>}
       </div>
     </div>
   )
