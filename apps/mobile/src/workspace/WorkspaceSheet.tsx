@@ -4,6 +4,7 @@ import * as api from '@/gateway/api'
 import type { FsListEntry, GitStatusResponse } from '@/types/hermes'
 import { BottomSheet } from '@/ui/BottomSheet'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 interface WorkspaceSheetProps {
   open: boolean
@@ -14,6 +15,7 @@ interface WorkspaceSheetProps {
 type Tab = 'files' | 'changes'
 
 export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
+  const { t } = useI18n()
   const [tab, setTab] = useState<Tab>('files')
   const [entries, setEntries] = useState<FsListEntry[]>([])
   const [currentPath, setCurrentPath] = useState(cwd ?? '')
@@ -93,7 +95,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
       }
       await refreshGitStatus()
     } catch {
-      setGitError(`Could not ${staged ? 'unstage' : 'stage'} ${file}.`)
+      setGitError(t.workspace.stageFailed(file, staged))
     } finally {
       setGitWorking(null)
     }
@@ -108,27 +110,27 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
       setCommitMessage('')
       await refreshGitStatus()
     } catch {
-      setGitError('Could not create commit.')
+      setGitError(t.workspace.commitFailed)
     } finally {
       setGitWorking(null)
     }
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Workspace" fullScreen>
+    <BottomSheet open={open} onClose={onClose} title={t.workspace.title} fullScreen>
       <div className="flex gap-px mb-3 rounded-lg bg-(--ui-bg-quaternary) p-0.5">
-        {(['files', 'changes'] as Tab[]).map(t => (
+        {(['files', 'changes'] as Tab[]).map(tabId => (
           <button
-            key={t}
+            key={tabId}
             className={cn(
               'flex-1 py-1.5 rounded-md text-(--conversation-caption-font-size) font-medium transition-colors',
-              tab === t
+              tab === tabId
                 ? 'bg-(--ui-bg-card) text-(--ui-text-primary) shadow-sm'
                 : 'text-(--ui-text-tertiary)'
             )}
-            onClick={() => setTab(t)}
+            onClick={() => setTab(tabId)}
           >
-            {t === 'files' ? 'Files' : 'Changes'}
+            {tabId === 'files' ? t.workspace.files : t.workspace.changes}
           </button>
         ))}
       </div>
@@ -141,7 +143,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
                 className="text-(--conversation-caption-font-size) text-(--ui-accent) mb-2"
                 onClick={() => setFileContent(null)}
               >
-                ← Back
+                {t.workspace.back}
               </button>
               <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary) mb-2 font-mono truncate">
                 {fileContent.path}
@@ -158,7 +160,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
                     className="text-(--conversation-caption-font-size) text-(--ui-accent) shrink-0"
                     onClick={() => navigateTo(parentPath)}
                   >
-                    ← Up
+                    {t.workspace.up}
                   </button>
                 )}
                 <span className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary) font-mono truncate flex-1">
@@ -167,7 +169,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
               </div>
 
               {loading && (
-                <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">Loading…</p>
+                <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">{t.common.loading}</p>
               )}
 
               <div>
@@ -207,41 +209,41 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
         <div>
           {!gitStatus && (
             <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">
-              No git repository
+              {t.workspace.noRepo}
             </p>
           )}
 
           {gitStatus && (
             <div className="space-y-3">
               <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">
-                Branch <span className="font-mono text-(--ui-text-secondary)">{gitStatus.branch}</span>
+                {t.workspace.branch} <span className="font-mono text-(--ui-text-secondary)">{gitStatus.branch}</span>
               </p>
 
               {gitStatus.staged.length > 0 && (
                 <div>
-                  <ChangeLabel label="Staged" color="text-(--ui-green)" />
-                  {gitStatus.staged.map(f => <GitFileRow key={f} file={f} action="Unstage" disabled={gitWorking !== null} onAction={() => void updateStage(f, true)} />)}
+                  <ChangeLabel label={t.workspace.staged} color="text-(--ui-green)" />
+                  {gitStatus.staged.map(f => <GitFileRow key={f} file={f} action={t.workspace.unstage} disabled={gitWorking !== null} onAction={() => void updateStage(f, true)} />)}
                 </div>
               )}
 
               {gitStatus.modified.length > 0 && (
                 <div>
-                  <ChangeLabel label="Modified" color="text-(--ui-yellow)" />
-                  {gitStatus.modified.map(f => <GitFileRow key={f} file={f} action="Stage" disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
+                  <ChangeLabel label={t.workspace.modified} color="text-(--ui-yellow)" />
+                  {gitStatus.modified.map(f => <GitFileRow key={f} file={f} action={t.workspace.stage} disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
                 </div>
               )}
 
               {gitStatus.untracked.length > 0 && (
                 <div>
-                  <ChangeLabel label="Untracked" color="text-(--ui-text-tertiary)" />
-                  {gitStatus.untracked.map(f => <GitFileRow key={f} file={f} action="Stage" disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
+                  <ChangeLabel label={t.workspace.untracked} color="text-(--ui-text-tertiary)" />
+                  {gitStatus.untracked.map(f => <GitFileRow key={f} file={f} action={t.workspace.stage} disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
                 </div>
               )}
 
               {gitStatus.staged.length > 0 && (
                 <div className="border-t border-(--ui-stroke-tertiary) pt-3">
-                  <label className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">Commit message</label>
-                  <div className="flex gap-2"><input value={commitMessage} onChange={event => setCommitMessage(event.target.value)} placeholder="Describe this change" className="min-w-0 flex-1 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" /><button disabled={!commitMessage.trim() || gitWorking !== null} onClick={() => void commit()} className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white disabled:opacity-50">Commit</button></div>
+                  <label className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{t.workspace.commitMessage}</label>
+                  <div className="flex gap-2"><input value={commitMessage} onChange={event => setCommitMessage(event.target.value)} placeholder={t.workspace.commitPlaceholder} className="min-w-0 flex-1 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" /><button disabled={!commitMessage.trim() || gitWorking !== null} onClick={() => void commit()} className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white disabled:opacity-50">{t.workspace.commit}</button></div>
                 </div>
               )}
 
@@ -251,7 +253,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
                 gitStatus.modified.length === 0 &&
                 gitStatus.untracked.length === 0 && (
                   <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">
-                    Working tree clean
+                    {t.workspace.clean}
                   </p>
                 )}
             </div>

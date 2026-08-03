@@ -97,7 +97,15 @@ export async function resumeSession(storedSessionId: string): Promise<SessionRes
   })
 }
 
-export async function createSession(cwd?: string): Promise<SessionCreateResponse> {
+export interface CreateSessionOptions {
+  cwd?: string
+  model?: string
+  provider?: string
+  reasoningEffort?: string
+  fast?: boolean
+}
+
+export async function createSession(options?: CreateSessionOptions): Promise<SessionCreateResponse> {
   const gateway = getGateway()
 
   if (!gateway) {
@@ -106,11 +114,43 @@ export async function createSession(cwd?: string): Promise<SessionCreateResponse
 
   const params: Record<string, unknown> = {}
 
-  if (cwd) {
-    params.cwd = cwd
+  if (options?.cwd) {
+    params.cwd = options.cwd
+  }
+
+  /* Sticky composer selection rides on session.create, like Desktop. */
+  if (options?.model) {
+    params.model = options.model
+  }
+
+  if (options?.provider) {
+    params.provider = options.provider
+  }
+
+  if (options?.reasoningEffort) {
+    params.reasoning_effort = options.reasoningEffort
+  }
+
+  if (options?.fast) {
+    params.fast = true
   }
 
   return gateway.request<SessionCreateResponse>('session.create', params)
+}
+
+/** Live fast-mode switch — same mechanism as Desktop's model-edit-submenu. */
+export async function setSessionFast(sessionId: string, fast: boolean): Promise<unknown> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('config.set', {
+    key: 'fast',
+    session_id: sessionId,
+    value: fast ? 'fast' : 'normal'
+  })
 }
 
 export async function submitPrompt(

@@ -4,6 +4,7 @@ import * as api from '@/gateway/api'
 import type { SkillInfo } from '@/types/hermes'
 import { BottomSheet } from '@/ui/BottomSheet'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 interface SkillsPageProps {
   open: boolean
@@ -11,6 +12,7 @@ interface SkillsPageProps {
 }
 
 export function SkillsPage({ open, onClose }: SkillsPageProps) {
+  const { t } = useI18n()
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -33,7 +35,7 @@ export function SkillsPage({ open, onClose }: SkillsPageProps) {
     api
       .getSkills()
       .then(setSkills)
-      .catch(() => setError('Could not load skills.'))
+      .catch(() => setError(t.skills.loadFailed))
       .finally(() => setLoading(false))
   }, [open])
 
@@ -48,18 +50,18 @@ export function SkillsPage({ open, onClose }: SkillsPageProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Skills" fullScreen>
+    <BottomSheet open={open} onClose={onClose} title={t.skills.title} fullScreen>
       <div className="mb-3 flex items-center gap-2 rounded-[var(--btn-radius)] bg-(--ui-bg-quaternary) px-2.5 py-2">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-(--ui-text-quaternary)"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
-        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search skills…" className="min-w-0 flex-1 bg-transparent text-(--conversation-text-font-size) text-(--ui-text-primary) outline-none placeholder:text-(--ui-text-quaternary)" />
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder={t.skills.searchPlaceholder} className="min-w-0 flex-1 bg-transparent text-(--conversation-text-font-size) text-(--ui-text-primary) outline-none placeholder:text-(--ui-text-quaternary)" />
         <span className="text-(--conversation-tool-font-size) text-(--ui-text-quaternary)">{visibleSkills.length}</span>
       </div>
       {loading && (
-        <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">Loading…</p>
+        <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">{t.common.loading}</p>
       )}
 
       {error && <p className="py-4 text-(--conversation-caption-font-size) text-(--ui-red)">{error}</p>}
-      {!loading && !error && visibleSkills.length === 0 && <p className="py-8 text-center text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">{query ? 'No matching skills' : 'No skills available'}</p>}
+      {!loading && !error && visibleSkills.length === 0 && <p className="py-8 text-center text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">{query ? t.skills.noMatches : t.skills.none}</p>}
 
       <div>
         {visibleSkills.map(skill => (

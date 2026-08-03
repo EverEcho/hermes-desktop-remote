@@ -4,6 +4,7 @@ import * as api from '@/gateway/api'
 import type { MessagingPlatformInfo, PairingResponse } from '@/types/hermes'
 import { BottomSheet } from '@/ui/BottomSheet'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 interface MessagingPageProps {
   open: boolean
@@ -11,6 +12,7 @@ interface MessagingPageProps {
 }
 
 export function MessagingPage({ open, onClose }: MessagingPageProps) {
+  const { t } = useI18n()
   const [platforms, setPlatforms] = useState<MessagingPlatformInfo[]>([])
   const [pairing, setPairing] = useState<PairingResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -28,7 +30,7 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
     if (platformsResult.status === 'fulfilled') {
       setPlatforms(platformsResult.value.platforms)
     } else {
-      setError('Could not load messaging platforms.')
+      setError(t.messaging.loadFailed)
     }
 
     if (pairingResult.status === 'fulfilled') {
@@ -64,21 +66,21 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Messaging" fullScreen>
+    <BottomSheet open={open} onClose={onClose} title={t.messaging.title} fullScreen>
       <div className="mb-3 flex items-center justify-between">
         <p className="text-(--conversation-caption-font-size) text-(--ui-text-tertiary)">
-          Configure channels and approve direct-message access.
+          {t.messaging.subtitle}
         </p>
         <button className="shrink-0 text-(--conversation-tool-font-size) text-(--ui-accent)" onClick={() => void refresh()}>
-          Refresh
+          {t.common.refresh}
         </button>
       </div>
 
       {error && <p className="mb-3 rounded-md bg-(--theme-secondary,#1a5cff14) px-3 py-2 text-(--conversation-tool-font-size) text-(--ui-red)">{error}</p>}
-      {loading && <p className="py-4 text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">Loading…</p>}
+      {loading && <p className="py-4 text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">{t.common.loading}</p>}
 
       {!loading && platforms.length === 0 && !error && (
-        <p className="py-4 text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">No messaging platforms available.</p>
+        <p className="py-4 text-(--conversation-caption-font-size) text-(--ui-text-quaternary)">{t.messaging.none}</p>
       )}
 
       <div className="space-y-2">
@@ -87,12 +89,12 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
 
       {pairing && pairing.pending.length > 0 && (
         <section className="mt-5">
-          <SectionLabel label={`Pending approvals · ${pairing.pending.length}`} />
+          <SectionLabel label={t.messaging.pendingApprovals(pairing.pending.length)} />
           {pairing.pending.map(user => (
             <PairingRow
               key={`${user.platform}:${user.request_id}`}
               user={user}
-              action="Approve"
+              action={t.messaging.approve}
               onAction={() => user.request_id && void approveUser(user.platform, user.request_id)}
             />
           ))}
@@ -101,12 +103,12 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
 
       {pairing && pairing.approved.length > 0 && (
         <section className="mt-4">
-          <SectionLabel label={`Approved users · ${pairing.approved.length}`} />
+          <SectionLabel label={t.messaging.approvedUsers(pairing.approved.length)} />
           {pairing.approved.map(user => (
             <PairingRow
               key={`${user.platform}:${user.user_id}`}
               user={user}
-              action="Revoke"
+              action={t.messaging.revoke}
               destructive
               onAction={() => void revokeUser(user.platform, user.user_id)}
             />
@@ -118,6 +120,7 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
 }
 
 function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; onSaved: () => Promise<void> }) {
+  const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -130,10 +133,10 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
     setNotice(null)
     try {
       await api.updateMessagingPlatform(platform.id, patch)
-      setNotice('Saved. Restart the gateway if the new channel does not connect.')
+      setNotice(t.messaging.savedRestart)
       await onSaved()
     } catch {
-      setNotice('Could not save changes.')
+      setNotice(t.messaging.saveFailed)
     } finally {
       setSaving(false)
     }
@@ -144,10 +147,10 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
     setNotice(null)
     try {
       const result = await api.testMessagingPlatform(platform.id)
-      setNotice(result.message || (result.ok ? 'Connection check passed.' : 'Connection check failed.'))
+      setNotice(result.message || (result.ok ? t.messaging.checkPassed : t.messaging.checkFailed))
       await onSaved()
     } catch {
-      setNotice('Connection check failed.')
+      setNotice(t.messaging.checkFailed)
     } finally {
       setTesting(false)
     }
@@ -165,7 +168,7 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
           {platform.description && <p className="mt-1 pl-4 text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">{platform.description}</p>}
         </button>
         <button
-          aria-label={`${platform.enabled ? 'Disable' : 'Enable'} ${platform.name}`}
+          aria-label={platform.enabled ? t.messaging.disable(platform.name) : t.messaging.enable(platform.name)}
           className={cn('relative mt-0.5 h-6 w-10 shrink-0 rounded-full transition-colors', platform.enabled ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)')}
           disabled={saving}
           onClick={() => void save({ enabled: !platform.enabled })}
@@ -177,7 +180,7 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
       {expanded && (
         <div className="border-t border-(--ui-stroke-tertiary) px-3 py-3">
           {platform.error_message && <p className="mb-3 text-(--conversation-tool-font-size) text-(--ui-red)">{platform.error_message}</p>}
-          {platform.home_channel && <p className="mb-3 text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">Home channel: {platform.home_channel.name}</p>}
+          {platform.home_channel && <p className="mb-3 text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">{t.messaging.homeChannel(platform.home_channel.name)}</p>}
           {(platform.env_vars ?? []).map(field => (
             <label key={field.key} className="mb-3 block">
               <span className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">
@@ -186,7 +189,7 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
               <input
                 value={values[field.key] ?? ''}
                 type={field.is_password ? 'password' : 'text'}
-                placeholder={field.is_set ? field.redacted_value ?? 'Configured' : field.description || field.key}
+                placeholder={field.is_set ? field.redacted_value ?? t.messaging.configured : field.description || field.key}
                 onChange={event => setValues(current => ({ ...current, [field.key]: event.target.value }))}
                 className="w-full rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2.5 py-2 text-(--conversation-tool-font-size) text-(--ui-text-primary) outline-none placeholder:text-(--ui-text-quaternary) focus:border-(--ui-accent)"
               />
@@ -195,12 +198,12 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
           ))}
           <div className="flex items-center gap-2">
             <button className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white disabled:opacity-50" disabled={saving} onClick={() => void save({ env: Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim())) })}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t.common.saving : t.common.save}
             </button>
             <button className="rounded-md bg-(--ui-bg-quaternary) px-3 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-secondary) disabled:opacity-50" disabled={testing} onClick={() => void test()}>
-              {testing ? 'Checking…' : 'Test'}
+              {testing ? t.messaging.testing : t.messaging.test}
             </button>
-            {platform.docs_url && <a className="ml-auto text-(--conversation-tool-font-size) text-(--ui-accent)" href={platform.docs_url} target="_blank" rel="noreferrer">Docs</a>}
+            {platform.docs_url && <a className="ml-auto text-(--conversation-tool-font-size) text-(--ui-accent)" href={platform.docs_url} target="_blank" rel="noreferrer">{t.messaging.docs}</a>}
           </div>
           {notice && <p className="mt-2 text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">{notice}</p>}
         </div>

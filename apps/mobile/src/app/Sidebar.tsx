@@ -4,6 +4,7 @@ import { ActionSheet, type ActionSheetAction } from '@/ui/ActionSheet'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import * as api from '@/gateway/api'
+import { useI18n } from '@/i18n'
 
 export interface SidebarProps {
   sessions: SessionInfo[]
@@ -17,6 +18,7 @@ export interface SidebarProps {
 }
 
 export function Sidebar(props: SidebarProps) {
+  const { t } = useI18n()
   const [search, setSearch] = useState('')
   const [actionTarget, setActionTarget] = useState<SessionInfo | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<SessionInfo | null>(null)
@@ -88,9 +90,9 @@ export function Sidebar(props: SidebarProps) {
 
   const actions: ActionSheetAction[] = actionTarget
     ? [
-        { id: 'pin', label: actionTarget.pinned ? '取消置顶' : '置顶对话' },
-        { id: 'archive', label: '归档对话' },
-        { id: 'delete', label: '删除对话', destructive: true }
+        { id: 'pin', label: actionTarget.pinned ? t.sidebar.unpin : t.sidebar.pin },
+        { id: 'archive', label: t.sidebar.archive },
+        { id: 'delete', label: t.sidebar.deleteSession, destructive: true }
       ]
     : []
 
@@ -100,29 +102,29 @@ export function Sidebar(props: SidebarProps) {
       <nav className="space-y-0.5 px-2 pb-2 pt-3 shrink-0">
         <SidebarAction
           icon={<Codicon name="add" className="text-sm" />}
-          label="新建会话"
+          label={t.sidebar.newSession}
           shortcut="⌘ N"
           onClick={props.onNew}
           primary
         />
         <SidebarAction
           icon={<Codicon name="symbol-misc" className="text-sm" />}
-          label="技能与工具"
+          label={t.sidebar.skills}
           onClick={() => props.onFeature('skills')}
         />
         <SidebarAction
           icon={<Codicon name="comment-discussion" className="text-sm" />}
-          label="消息平台"
+          label={t.sidebar.messaging}
           onClick={() => props.onFeature('messaging')}
         />
         <SidebarAction
           icon={<Codicon name="files" className="text-sm" />}
-          label="产物"
+          label={t.sidebar.artifacts}
           onClick={() => props.onFeature('workspace')}
         />
         <SidebarAction
           icon={<Codicon name="history" className="text-sm" />}
-          label="定时任务"
+          label={t.sidebar.cron}
           onClick={() => props.onFeature('cron')}
         />
       </nav>
@@ -134,7 +136,7 @@ export function Sidebar(props: SidebarProps) {
           <input
             value={search}
             onChange={event => setSearch(event.target.value)}
-            placeholder="搜索会话..."
+            placeholder={t.sidebar.searchPlaceholder}
             className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-(--ui-text-quaternary) text-xs text-(--ui-text-primary)"
           />
         </label>
@@ -143,17 +145,17 @@ export function Sidebar(props: SidebarProps) {
       {/* Sessions List */}
       <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-2 pb-3">
         {props.loading && !filtered.length && (
-          <div className="px-2 py-4 text-xs text-(--ui-text-quaternary)">加载中…</div>
+          <div className="px-2 py-4 text-xs text-(--ui-text-quaternary)">{t.common.loading}</div>
         )}
 
         {!props.loading && !filtered.length && (
           <div className="px-2 py-6 text-center text-xs text-(--ui-text-tertiary)">
-            {search ? '没有匹配的会话' : '暂无会话'}
+            {search ? t.sidebar.noMatches : t.sidebar.noSessions}
           </div>
         )}
 
         {/* Pinned Section */}
-        <SidebarSection icon={<Codicon name="pin" className="text-xs" />} title="已置顶">
+        <SidebarSection icon={<Codicon name="pin" className="text-xs" />} title={t.sidebar.pinned}>
           {pinned.length > 0 ? (
             pinned.map(session => (
               <SessionItem
@@ -166,19 +168,19 @@ export function Sidebar(props: SidebarProps) {
             ))
           ) : (
             <div className="px-2 py-1 text-[0.65rem] text-(--ui-text-quaternary) leading-tight">
-              Shift+ 单击对话以置顶，拖动以重新排序
+              {t.sidebar.pinnedHint}
             </div>
           )}
         </SidebarSection>
 
         {/* Projects Section */}
-        <SidebarSection icon={<Codicon name="folder" className="text-xs" />} title="项目">
+        <SidebarSection icon={<Codicon name="folder" className="text-xs" />} title={t.sidebar.projects}>
           <button
             onClick={props.onNew}
             className="group flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover)"
           >
             <Codicon name="home" className="text-xs text-(--ui-text-quaternary)" />
-            <span>主页</span>
+            <span>{t.sidebar.home}</span>
           </button>
           {projects.map(([name, sessions]) => (
             <div key={name} className="mt-1 mb-2">
@@ -202,7 +204,7 @@ export function Sidebar(props: SidebarProps) {
 
         {/* Recent Section */}
         {recent.length > 0 && (
-          <SidebarSection icon={<Codicon name="history" className="text-xs" />} title="最近">
+          <SidebarSection icon={<Codicon name="history" className="text-xs" />} title={t.sidebar.recent}>
             {recent.map(session => (
               <SessionItem
                 key={session.id}
@@ -220,17 +222,17 @@ export function Sidebar(props: SidebarProps) {
       <div className="border-t border-(--ui-stroke-tertiary) p-2 space-y-0.5 shrink-0 text-xs text-(--ui-text-tertiary)">
         <SidebarAction
           icon={<Codicon name="settings-gear" className="text-sm" />}
-          label="设置"
+          label={t.sidebar.settings}
           onClick={() => props.onFeature('settings')}
         />
         <SidebarAction
           icon={<Codicon name="server" className="text-sm" />}
-          label="切换网关"
+          label={t.sidebar.switchGateway}
           onClick={() => props.onFeature('gateway')}
         />
         <SidebarAction
           icon={<Codicon name="log-out" className="text-sm" />}
-          label="退出登录"
+          label={t.sidebar.logout}
           onClick={() => props.onFeature('logout')}
           destructive
         />
@@ -248,8 +250,8 @@ export function Sidebar(props: SidebarProps) {
       <ActionSheet
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
-        title={`确定要彻底删除 "${confirmDelete?.title ?? '未命名对话'}" 吗？该操作不可撤销。`}
-        actions={[{ id: 'confirm', label: '永久删除', destructive: true }]}
+        title={t.sidebar.deleteConfirm(confirmDelete?.title ?? t.sidebar.untitled)}
+        actions={[{ id: 'confirm', label: t.sidebar.deletePermanently, destructive: true }]}
         onAction={id => void confirmDeleteAction(id === 'confirm')}
       />
     </div>
@@ -281,6 +283,7 @@ function SessionItem({
   onLongPress: (session: SessionInfo) => void
   nested?: boolean
 }) {
+  const { t } = useI18n()
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
 
@@ -326,10 +329,10 @@ function SessionItem({
           <span className={cn('mr-1 text-(--ui-text-quaternary)', session.is_active && 'text-(--ui-accent)')}>
             •
           </span>
-          {session.title || session.preview || '未命名对话'}
+          {session.title || session.preview || t.sidebar.untitled}
         </span>
         <span className="shrink-0 text-[0.6rem] text-(--ui-text-quaternary)">
-          {formatAge(session.last_active)}
+          {formatAge(session.last_active, t.sidebar.justNow)}
         </span>
       </div>
       {session.preview && session.title ? (
@@ -341,10 +344,10 @@ function SessionItem({
   )
 }
 
-function formatAge(epochSeconds: number): string {
+function formatAge(epochSeconds: number, justNow: string): string {
   if (!epochSeconds) return ''
   const diff = Math.max(0, Date.now() / 1000 - epochSeconds)
-  if (diff < 60) return '刚刚'
+  if (diff < 60) return justNow
   if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`
   return `${Math.floor(diff / 86400)}d`

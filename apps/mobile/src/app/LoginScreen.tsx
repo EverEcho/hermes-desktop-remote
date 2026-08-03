@@ -6,6 +6,7 @@ import { Button, Spinner } from '@/ui/Button'
 import { Input } from '@/ui/Input'
 import { isNativePlatform } from '@/native'
 import { gatewayTargetHeaders, resolveGatewayRequestUrl } from '@/gateway/request-url'
+import { useI18n } from '@/i18n'
 
 interface LoginScreenProps {
   error?: string
@@ -17,6 +18,7 @@ interface LoginScreenProps {
 type Probe = { authMode: 'oauth' | 'token'; providers: Array<{ name: string; displayName: string; supportsPassword: boolean }> }
 
 export function LoginScreen({ error: externalError, initialGatewayUrl = '', onClose, open }: LoginScreenProps) {
+  const { t } = useI18n()
   const authState = useStore($authState)
   const [remoteUrl, setRemoteUrl] = useState(() => initialGatewayUrl || window.sessionStorage.getItem('rhermes.pending_gateway_url') || '')
   const [remoteToken, setRemoteToken] = useState('')
@@ -71,7 +73,7 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
       }).catch(error => {
         if (seq === probeSeq.current) {
           setProbe(null)
-          setProbeError(error instanceof Error ? error.message : 'Could not reach this gateway.')
+          setProbeError(error instanceof Error ? error.message : t.login.unreachable)
         }
       }).finally(() => {
         if (seq === probeSeq.current) setProbing(false)
@@ -107,19 +109,19 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
     try {
       if (authMode === 'cookie') {
         const response = await fetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { credentials: 'include', headers: gatewayTargetHeaders(url) })
-        if (!response.ok) throw new Error(`Test failed (${response.status})`)
+        if (!response.ok) throw new Error(t.login.testFailedCode(response.status))
         // A successful cookie probe is the browser-login completion signal.
         // Persist the connection state immediately so the Authentication row
         // changes to "Connected" before the user applies the connection.
         await loginWithCookie(url)
       } else if (authMode === 'token') {
         const response = await fetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { headers: { 'X-Hermes-Session-Token': remoteToken.trim(), ...gatewayTargetHeaders(url) } })
-        if (!response.ok) throw new Error(`Test failed (${response.status})`)
+        if (!response.ok) throw new Error(t.login.testFailedCode(response.status))
       }
-      setSuccess(`Connected to ${url}.`)
+      setSuccess(t.login.connectedTo(url))
       setTested(true)
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Test failed')
+      setActionError(error instanceof Error ? error.message : t.login.testFailed)
     } finally { setTesting(false) }
   }
 
@@ -131,7 +133,7 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
       else if (authMode === 'token') await loginWithToken(url, remoteToken.trim())
       onClose?.()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Could not apply connection')
+      setActionError(error instanceof Error ? error.message : t.login.applyFailed)
     } finally { setApplying(false) }
   }
 
@@ -140,18 +142,18 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
     <div className="flex w-full max-w-xl flex-col rounded-xl border border-(--stroke-nous) bg-(--ui-bg-card) p-5 shadow-(--shadow-nous) sm:p-8">
       <div className="flex items-start gap-3 sm:gap-4">
         <span className="size-10 shrink-0 overflow-hidden rounded-md bg-white sm:size-11"><img alt="" className="size-full object-contain" src="/nous-girl.jpg" /></span>
-        <div className="min-w-0"><h2 className="text-base font-semibold tracking-tight sm:text-xl">Connect to existing Hermes</h2><p className="mt-1 text-xs text-(--ui-text-tertiary) sm:text-sm">{tokenOnly ? 'Enter your gateway URL and session token to test Hermes in this browser.' : 'Enter your gateway URL. Hermes Desktop will detect whether it needs a token or browser sign-in.'}</p></div>
+        <div className="min-w-0"><h2 className="text-base font-semibold tracking-tight sm:text-xl">{t.login.title}</h2><p className="mt-1 text-xs text-(--ui-text-tertiary) sm:text-sm">{tokenOnly ? t.login.descriptionToken : t.login.description}</p></div>
       </div>
       <div className="mt-5 grid gap-4 sm:mt-6">
-        <label className="grid gap-1.5"><span className="text-xs font-medium text-(--ui-text-tertiary)">Gateway URL</span><Input disabled={applying} placeholder="https://gateway.example.com/hermes" value={remoteUrl} onChange={event => { invalidate(); setRemoteUrl(event.target.value) }} /><span className="text-xs text-(--ui-text-tertiary)">Use the base URL of the Hermes gateway, including https:// when remote.</span></label>
-        {probing ? <div className="flex items-center gap-2 text-xs text-(--ui-text-tertiary)"><Spinner className="size-3" />Checking gateway…</div> : null}
+        <label className="grid gap-1.5"><span className="text-xs font-medium text-(--ui-text-tertiary)">{t.login.gatewayUrl}</span><Input disabled={applying} placeholder="https://gateway.example.com/hermes" value={remoteUrl} onChange={event => { invalidate(); setRemoteUrl(event.target.value) }} /><span className="text-xs text-(--ui-text-tertiary)">{t.login.gatewayUrlHint}</span></label>
+        {probing ? <div className="flex items-center gap-2 text-xs text-(--ui-text-tertiary)"><Spinner className="size-3" />{t.login.checking}</div> : null}
         {probeError ? <Notice text={probeError} error /> : null}
-        {authMode === 'oauth' || authMode === 'cookie' ? <div className="rounded-[var(--btn-radius)] border border-(--ui-stroke-tertiary) p-3"><div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium">Authentication</div><p className="mt-1 text-xs text-(--ui-text-tertiary)">{oauthConnected || cookieConnected ? 'Browser sign-in completed.' : passwordLogin ? 'Sign in with Username & Password before testing this gateway.' : 'Sign in with your browser before testing this gateway.'}</p></div>{oauthConnected || cookieConnected ? <span className="text-sm text-(--theme-primary)">✓&nbsp; Connected</span> : <Button disabled={signingIn || applying} size="sm" onClick={() => void signIn()}>{signingIn ? <Spinner className="size-3" /> : <span aria-hidden="true">↪</span>} Sign in</Button>}</div></div> : null}
-        {authMode === 'token' ? <label className="grid gap-1.5"><span className="text-xs font-medium text-(--ui-text-tertiary)">Session token</span><Input disabled={applying} type="password" placeholder="Paste your session token" value={remoteToken} onChange={event => { invalidate(); setRemoteToken(event.target.value) }} className="font-mono" /><span className="text-xs text-(--ui-text-tertiary)">{tokenOnly ? 'Kept only for this browser tab.' : 'Stored securely on this device.'}</span></label> : null}
+        {authMode === 'oauth' || authMode === 'cookie' ? <div className="rounded-[var(--btn-radius)] border border-(--ui-stroke-tertiary) p-3"><div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium">{t.login.authentication}</div><p className="mt-1 text-xs text-(--ui-text-tertiary)">{oauthConnected || cookieConnected ? t.login.browserDone : passwordLogin ? t.login.passwordFirst : t.login.browserFirst}</p></div>{oauthConnected || cookieConnected ? <span className="text-sm text-(--theme-primary)">✓&nbsp; {t.login.connected}</span> : <Button disabled={signingIn || applying} size="sm" onClick={() => void signIn()}>{signingIn ? <Spinner className="size-3" /> : <span aria-hidden="true">↪</span>} {t.login.signIn}</Button>}</div></div> : null}
+        {authMode === 'token' ? <label className="grid gap-1.5"><span className="text-xs font-medium text-(--ui-text-tertiary)">{t.login.sessionToken}</span><Input disabled={applying} type="password" placeholder={t.login.pasteToken} value={remoteToken} onChange={event => { invalidate(); setRemoteToken(event.target.value) }} className="font-mono" /><span className="text-xs text-(--ui-text-tertiary)">{tokenOnly ? t.login.tabOnly : t.login.deviceStored}</span></label> : null}
         {actionError || externalError ? <Notice text={actionError || externalError || ''} error /> : null}
         {success ? <Notice text={success} /> : null}
       </div>
-      <div className="mt-6 flex flex-col-reverse gap-2 sm:mt-7 sm:flex-row sm:items-center sm:justify-between"><Button disabled={applying} onClick={onClose} size="sm" variant="ghost">Back</Button><div className="flex justify-end gap-2"><Button disabled={testing || applying || !canTest} onClick={() => void testConnection()} size="sm" variant="secondary">{testing ? <Spinner className="size-3" /> : null}Test connection</Button><Button disabled={!canApply} onClick={() => void apply()} size="sm">{applying ? <Spinner className="size-3" /> : null}Apply and reconnect</Button></div></div>
+      <div className="mt-6 flex flex-col-reverse gap-2 sm:mt-7 sm:flex-row sm:items-center sm:justify-between"><Button disabled={applying} onClick={onClose} size="sm" variant="ghost">{t.login.back}</Button><div className="flex justify-end gap-2"><Button disabled={testing || applying || !canTest} onClick={() => void testConnection()} size="sm" variant="secondary">{testing ? <Spinner className="size-3" /> : null}{t.login.testConnection}</Button><Button disabled={!canApply} onClick={() => void apply()} size="sm">{applying ? <Spinner className="size-3" /> : null}{t.login.applyReconnect}</Button></div></div>
     </div>
   </div>
 }

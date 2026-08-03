@@ -2,7 +2,7 @@ import type { GatewayEvent } from '@hermes/shared'
 import { atom } from 'nanostores'
 
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
-import type { MobileMessage, MobileMessagePart, MobileToolCall } from '@/types/mobile'
+import type { MobileMessage, MobileMessagePart } from '@/types/mobile'
 import * as api from '@/gateway/api'
 import { onGatewayEvent } from '@/gateway'
 
@@ -15,6 +15,8 @@ export const $busy = atom(false)
 export const $awaitingResponse = atom(false)
 export const $currentModel = atom('')
 export const $currentProvider = atom('')
+export const $currentReasoningEffort = atom('medium')
+export const $currentFast = atom(false)
 export const $currentCwd = atom('')
 export const $sessionTitle = atom<string | null>(null)
 
@@ -101,9 +103,16 @@ export function closeSession(): void {
   $sessionTitle.set(null)
 }
 
+export interface SendMessageOptions {
+  model?: string
+  provider?: string
+  reasoningEffort?: string
+  attachments?: Array<{ data_url: string; filename: string }>
+}
+
 export async function sendMessage(
   text: string,
-  options?: { model?: string; provider?: string; reasoningEffort?: string }
+  options?: SendMessageOptions
 ): Promise<void> {
   const runtimeId = $activeRuntimeId.get()
   const storedSessionId = $activeSessionId.get()
@@ -163,7 +172,7 @@ async function submitPromptWithRecovery(
   runtimeId: string,
   storedSessionId: string,
   text: string,
-  options?: { model?: string; provider?: string; reasoningEffort?: string }
+  options?: SendMessageOptions
 ): Promise<void> {
   try {
     await api.submitPrompt(runtimeId, text, options)
@@ -207,7 +216,13 @@ export async function stopGeneration(): Promise<void> {
 
 export async function createNewSession(cwd?: string): Promise<string | null> {
   try {
-    const result = await api.createSession(cwd)
+    const result = await api.createSession({
+      cwd,
+      model: $currentModel.get() || undefined,
+      provider: $currentProvider.get() || undefined,
+      reasoningEffort: $currentReasoningEffort.get(),
+      fast: $currentFast.get()
+    })
     const storedId = result.stored_session_id ?? result.session_id
     $activeRuntimeId.set(result.session_id)
     $activeSessionId.set(storedId)

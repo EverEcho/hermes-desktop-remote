@@ -13,12 +13,14 @@ import { MobileComposer } from '@/components/MobileComposer'
 import { cn } from '@/ui/utils'
 import { MarkdownContent } from '@/components/MarkdownContent'
 import { Codicon } from '@/ui/Codicon'
+import { useI18n, type Catalog } from '@/i18n'
 
 interface SessionDetailProps {
   sessionId: string
 }
 
 export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
+  const { t } = useI18n()
   const messages = useStore($messages)
   const busy = useStore($busy)
   const awaitingResponse = useStore($awaitingResponse)
@@ -53,7 +55,7 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
         {messages.length === 0 && !busy && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
             <Codicon name="robot" className="text-3xl text-(--ui-text-quaternary) mb-2" />
-            <p className="text-xs text-(--ui-text-tertiary)">从一个目标开始</p>
+            <p className="text-xs text-(--ui-text-tertiary)">{t.session.emptyHint}</p>
           </div>
         )}
 
@@ -64,7 +66,7 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
         {awaitingResponse && (
           <div className="flex items-center gap-2 py-2 px-1 text-(--ui-text-tertiary)">
             <Codicon name="sparkle" className="text-xs text-(--ui-accent) animate-spin" />
-            <span className="text-xs text-(--ui-text-secondary)">思考中…</span>
+            <span className="text-xs text-(--ui-text-secondary)">{t.session.thinking}</span>
           </div>
         )}
 
@@ -87,6 +89,8 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
 }
 
 function MessageRow({ message }: { message: MobileMessage }) {
+  const { t } = useI18n()
+
   if (message.role === 'system') {
     return null
   }
@@ -169,7 +173,7 @@ function MessageRow({ message }: { message: MobileMessage }) {
                 className="mt-1.5 font-medium text-(--ui-accent) underline underline-offset-2 active:opacity-70"
                 onClick={() => void retryMessage(message.id, message.retryText!, message.retryUserMessageId)}
               >
-                重试发送
+                {t.session.retrySend}
               </button>
             )}
           </div>
@@ -182,6 +186,7 @@ function MessageRow({ message }: { message: MobileMessage }) {
 }
 
 function ThinkingAccordion({ reasoning }: { reasoning: string }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
 
   return (
@@ -190,7 +195,7 @@ function ThinkingAccordion({ reasoning }: { reasoning: string }) {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1 text-(--ui-text-tertiary) hover:text-(--ui-text-secondary) transition-colors py-0.5"
       >
-        <span className="font-normal">已思考</span>
+        <span className="font-normal">{t.session.thought}</span>
         <Codicon
           name="chevron-down"
           className={cn('text-[0.65rem] text-(--ui-text-quaternary) transition-transform duration-150', open && 'rotate-180')}
@@ -206,6 +211,7 @@ function ThinkingAccordion({ reasoning }: { reasoning: string }) {
 }
 
 function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { type: 'tool-call' }>[] }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   if (!tools.length) return null
 
@@ -215,8 +221,8 @@ function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { typ
   const icon = isSearch ? 'search' : first.name.includes('run') || first.name.includes('exec') || first.name === 'terminal' ? 'terminal' : 'tools'
 
   const titleText = isSingle
-    ? formatToolHeader(first.name, first.args, first.summary)
-    : summarizeMobileToolGroup(tools)
+    ? formatToolHeader(t, first.name, first.args, first.summary)
+    : summarizeMobileToolGroup(t, tools)
 
   return (
     <div className="my-1.5 text-xs">
@@ -250,7 +256,7 @@ function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { typ
             <div key={tc.id || i} className={cn(i > 0 && 'border-t border-(--ui-stroke-quaternary) pt-2')}>
               <div className="flex items-center gap-1.5 text-(--ui-text-tertiary) mb-1 font-sans">
                 <span className="font-mono text-[0.7rem] font-semibold text-(--ui-text-secondary)">
-                  {formatToolHeader(tc.name, tc.args, tc.summary)}
+                  {formatToolHeader(t, tc.name, tc.args, tc.summary)}
                 </span>
                 {tc.durationS != null && (
                   <span className="text-[0.625rem] text-(--ui-text-quaternary) ml-auto">
@@ -282,28 +288,28 @@ function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { typ
   )
 }
 
-function summarizeMobileToolGroup(tools: Extract<MobileMessagePart, { type: 'tool-call' }>[]): string {
-  const isTerminal = tools.every(t => t.name === 'terminal' || t.name === 'execute_code')
+function summarizeMobileToolGroup(t: Catalog, tools: Extract<MobileMessagePart, { type: 'tool-call' }>[]): string {
+  const isTerminal = tools.every(tool => tool.name === 'terminal' || tool.name === 'execute_code')
   if (isTerminal) {
-    return `Ran ${tools.length} commands`
+    return t.session.ranCommands(tools.length)
   }
-  const isSearch = tools.every(t => t.name.includes('search') || t.name.includes('read') || t.name.includes('list'))
+  const isSearch = tools.every(tool => tool.name.includes('search') || tool.name.includes('read') || tool.name.includes('list'))
   if (isSearch) {
-    return `Explored ${tools.length} files`
+    return t.session.exploredFiles(tools.length)
   }
-  return `Used ${tools.length} tools`
+  return t.session.usedTools(tools.length)
 }
 
-function formatToolHeader(name: string, args: unknown, summary?: string): string {
+function formatToolHeader(t: Catalog, name: string, args: unknown, summary?: string): string {
   if (summary) return summary
   if (typeof args === 'object' && args !== null) {
     const record = args as Record<string, unknown>
-    if (record.command) return `已运行 ${record.command}`
-    if (record.query) return `已搜索 "${record.query}"`
-    if (record.pattern) return `已搜索 "${record.pattern}"`
-    if (record.path) return `已读取 ${record.path}`
+    if (record.command) return t.session.ranCommand(String(record.command))
+    if (record.query) return t.session.searchedQuery(String(record.query))
+    if (record.pattern) return t.session.searchedQuery(String(record.pattern))
+    if (record.path) return t.session.readPath(String(record.path))
   }
-  return `已运行 ${name}`
+  return t.session.ranTool(name)
 }
 
 function extractCommandText(args: unknown): string | null {

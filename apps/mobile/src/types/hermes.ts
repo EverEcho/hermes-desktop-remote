@@ -136,6 +136,14 @@ export interface ModelOptionProvider {
   key_env?: string
   is_user_defined?: boolean
   api_url?: string
+  /** Per-model option support, keyed by model id. Lets the UI gate
+   *  fast/reasoning controls (same contract as Desktop). */
+  capabilities?: Record<string, ModelCapabilities>
+}
+
+export interface ModelCapabilities {
+  fast: boolean
+  reasoning: boolean
 }
 
 export interface ModelOptionsResponse {

@@ -7,8 +7,18 @@ import { connectGateway, disconnectGateway, startEventRouter, stopEventRouter } 
 import { loadSessionToken } from '@/auth/token-store'
 import { LoginScreen } from '@/app/LoginScreen'
 import { AppShell } from '@/app/AppShell'
+import { I18nProvider, useI18n } from '@/i18n'
 
 export function App() {
+  return (
+    <I18nProvider>
+      <AppRoot />
+    </I18nProvider>
+  )
+}
+
+function AppRoot() {
+  const { t } = useI18n()
   const authState = useStore($authState)
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false)
 
@@ -58,7 +68,7 @@ export function App() {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-2 bg-(--ui-bg-chrome)">
         <span className="size-1.5 rounded-full bg-(--ui-accent) animate-pulse" />
-        <div className="text-(--conversation-caption-font-size) text-(--ui-text-tertiary)">Connecting…</div>
+        <div className="text-(--conversation-caption-font-size) text-(--ui-text-tertiary)">{t.app.connecting}</div>
       </div>
     )
   }

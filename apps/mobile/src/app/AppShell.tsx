@@ -9,15 +9,14 @@ import { Drawer } from '@/ui/Drawer'
 import { MobileSheet } from '@/ui/BottomSheet'
 import { Button } from '@/ui/Button'
 import { Input } from '@/ui/Input'
-import { MobileListRow } from '@/ui/primitives'
 import { SessionDetail } from '@/sessions/SessionDetail'
-import { SessionList } from '@/sessions/SessionList'
 import { MobileHeader } from '@/components/MobileHeader'
 import { MobileSettingsModal } from '@/components/MobileSettingsModal'
 import { WorkspaceSheet } from '@/workspace/WorkspaceSheet'
 import { SkillsPage } from '@/features/SkillsPage'
 import { CronPage } from '@/features/CronPage'
 import { MessagingPage } from '@/features/MessagingPage'
+import { useI18n } from '@/i18n'
 import { Sidebar } from './Sidebar'
 import { NewSessionHome } from './NewSessionHome'
 
@@ -95,6 +94,7 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
           connectionState={connectionState}
           onRetry={handleRetry}
           title={activeSessionId ? undefined : 'RHermes'}
+          onBack={activeSessionId ? handleBack : undefined}
           onWorkspacePress={activeSessionId ? () => setWorkspaceOpen(true) : undefined}
         />
 
@@ -155,8 +155,10 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
 }
 
 function ApprovalSheet({ requestId, command, description }: { requestId: string; command?: string; description?: string }) {
+  const { t } = useI18n()
+
   return (
-    <MobileSheet open onClose={() => {}} title="Approval required">
+    <MobileSheet open onClose={() => {}} title={t.approvals.approvalRequired}>
       <div className="space-y-3">
         {description && <p className="text-xs text-(--ui-text-secondary)">{description}</p>}
         {command && (
@@ -165,8 +167,8 @@ function ApprovalSheet({ requestId, command, description }: { requestId: string;
           </pre>
         )}
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={() => resolveApproval(requestId, true)}>Approve</Button>
-          <Button className="flex-1" variant="secondary" onClick={() => resolveApproval(requestId, false)}>Deny</Button>
+          <Button className="flex-1" onClick={() => resolveApproval(requestId, true)}>{t.approvals.approve}</Button>
+          <Button className="flex-1" variant="secondary" onClick={() => resolveApproval(requestId, false)}>{t.approvals.deny}</Button>
         </div>
       </div>
     </MobileSheet>
@@ -174,10 +176,11 @@ function ApprovalSheet({ requestId, command, description }: { requestId: string;
 }
 
 function ClarifySheet({ requestId, question, choices }: { requestId: string; question: string; choices?: string[] }) {
+  const { t } = useI18n()
   const [answer, setAnswer] = useState('')
 
   return (
-    <MobileSheet open onClose={() => {}} title="Input needed">
+    <MobileSheet open onClose={() => {}} title={t.approvals.inputNeeded}>
       <div className="space-y-3">
         <p className="text-xs text-(--ui-text-primary)">{question}</p>
 
@@ -199,14 +202,14 @@ function ClarifySheet({ requestId, question, choices }: { requestId: string; que
             <Input
               value={answer}
               onChange={e => setAnswer(e.target.value)}
-              placeholder="Type your answer…"
+              placeholder={t.approvals.answerPlaceholder}
             />
             <Button
               className="w-full"
               disabled={!answer.trim()}
               onClick={() => resolveClarification(requestId, answer.trim())}
             >
-              Submit
+              {t.approvals.submit}
             </Button>
           </>
         )}
@@ -216,12 +219,13 @@ function ClarifySheet({ requestId, question, choices }: { requestId: string; que
 }
 
 function SecretSheet({ requestId, envVar, prompt }: { requestId: string; envVar: string; prompt?: string }) {
+  const { t } = useI18n()
   const [value, setValue] = useState('')
 
   return (
-    <MobileSheet open onClose={() => {}} title="Credential required">
+    <MobileSheet open onClose={() => {}} title={t.approvals.credentialRequired}>
       <div className="space-y-3">
-        <p className="text-xs text-(--ui-text-secondary)">{prompt ?? `Enter value for ${envVar}`}</p>
+        <p className="text-xs text-(--ui-text-secondary)">{prompt ?? t.approvals.credentialPrompt(envVar)}</p>
         <Input
           type="password"
           value={value}
@@ -237,7 +241,7 @@ function SecretSheet({ requestId, envVar, prompt }: { requestId: string; envVar:
             setValue('')
           }}
         >
-          Submit
+          {t.approvals.submit}
         </Button>
       </div>
     </MobileSheet>

@@ -107,8 +107,17 @@
   --dt-composer-ring: var(--ui-base);
 }
 
-/* ── Dark overrides (Desktop :root.dark) ────────────────────────────── */
+/* ── Dark overrides (Desktop :root.dark + nous darkColors seeds) ────── */
 :root.dark {
+  /* Desktop applies these seeds at runtime from the active theme; mobile has
+   * no runtime theming, so mirror the default `nous` darkColors here. */
+  --theme-foreground: #ffe6cb;
+  --theme-primary: #ffe6cb;
+  --theme-background-seed: #0d2f86;
+  --theme-sidebar-seed: #09286f;
+  --theme-card-seed: #12378f;
+  --theme-elevated-seed: #123a96;
+
   --theme-neutral-chrome: #0d0d0e;
   --theme-neutral-sidebar: #0a0a0b;
   --theme-neutral-card: #161618;
