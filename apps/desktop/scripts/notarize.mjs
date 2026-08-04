@@ -1,20 +1,21 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 
 function run(command, args) {
   return new Promise((resolve, reject) => {
-    console.log(`[notarize] Running: ${command} ${args.join(' ')}`)
-    const child = spawn(command, args, { stdio: 'inherit' })
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve()
-      } else {
-        reject(new Error(`${command} ${args.join(' ')} failed with exit code ${code}`))
+    execFile(command, args, (error, stdout, stderr) => {
+      if (error) {
+        reject(
+          new Error(
+            `${command} ${args.join(' ')} failed: ${stderr?.trim() || stdout?.trim() || error.message}`
+          )
+        )
+        return
       }
+      resolve({ stdout, stderr })
     })
-    child.on('error', (err) => reject(err))
   })
 }
 
@@ -31,7 +32,7 @@ function resolveApiKeyPath(rawValue) {
   }
 
   if (!inlineKeyLooksValid(value)) {
-    throw new Error('HERMES_NOTARY_KEY must be a file path or inline .p8 key content')
+    throw new Error('APPLE_API_KEY must be a file path or inline .p8 key content')
   }
 
   const tempPath = path.join(os.tmpdir(), `hermes-notary-${Date.now()}-${process.pid}.p8`)
@@ -72,14 +73,12 @@ export default async function notarize(context) {
     return
   }
 
-  // Do not use electron-builder's APPLE_API_KEY* environment variables here:
-  // it starts its own silent notarization before this afterSign hook runs.
-  const keyId = String(process.env.HERMES_NOTARY_KEY_ID || '').trim()
-  const issuer = String(process.env.HERMES_NOTARY_ISSUER || '').trim()
-  const rawApiKey = process.env.HERMES_NOTARY_KEY
+  const keyId = String(process.env.APPLE_API_KEY_ID || '').trim()
+  const issuer = String(process.env.APPLE_API_ISSUER || '').trim()
+  const rawApiKey = process.env.APPLE_API_KEY
   if (!rawApiKey || !keyId || !issuer) {
     console.log(
-      'Skipping notarization: HERMES_NOTARY_KEY, HERMES_NOTARY_KEY_ID, and HERMES_NOTARY_ISSUER are not fully configured.'
+      'Skipping notarization: APPLE_API_KEY, APPLE_API_KEY_ID, and APPLE_API_ISSUER are not fully configured.'
     )
     return
   }
