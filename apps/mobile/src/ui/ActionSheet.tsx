@@ -22,9 +22,9 @@ export function ActionSheet({ open, onClose, title, actions, onAction }: ActionS
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end md:justify-center md:items-center md:p-6">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative mx-3 mb-[calc(0.5rem+var(--safe-area-bottom))] rounded-xl border border-(--stroke-nous) shadow-(--shadow-nous) bg-(--ui-bg-elevated) overflow-hidden">
+      <div className="relative mx-3 mb-[calc(0.5rem+var(--safe-area-bottom))] md:m-0 md:w-96 rounded-xl border border-(--stroke-nous) shadow-(--shadow-nous) bg-(--ui-bg-elevated) overflow-hidden">
         {title && (
           <div className="px-4 py-2.5 text-center text-(--conversation-tool-font-size) text-(--ui-text-tertiary) border-b border-(--ui-stroke-tertiary)">
             {title}

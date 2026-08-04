@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
 import type { FsListEntry, GitStatusResponse } from '@/types/hermes'
-import { BottomSheet } from '@/ui/BottomSheet'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
 
@@ -117,7 +117,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={t.workspace.title} fullScreen>
+    <ResponsiveSheet open={open} onClose={onClose} title={t.workspace.title}>
       <div className="flex gap-px mb-3 rounded-lg bg-(--ui-bg-quaternary) p-0.5">
         {(['files', 'changes'] as Tab[]).map(tabId => (
           <button
@@ -260,7 +260,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
           )}
         </div>
       )}
-    </BottomSheet>
+    </ResponsiveSheet>
   )
 }
 

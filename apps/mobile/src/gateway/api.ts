@@ -1,25 +1,39 @@
 import type {
+  AuxiliaryModelsResponse,
+  ConfigSchemaResponse,
   CronJob,
   CronJobCreatePayload,
   CronJobUpdates,
+  CustomEndpointUpdate,
+  CustomEndpointsResponse,
+  EnvVarInfo,
   FsListResponse,
   GitFileDiffResponse,
   GitStatusResponse,
   HermesConfig,
+  HermesConfigRecord,
   MessagingPlatformUpdate,
   MessagingPlatformsResponse,
+  ModelAssignmentRequest,
+  ModelAssignmentResponse,
   ModelInfoResponse,
   ModelOptionsResponse,
+  MoaConfigResponse,
+  OAuthPollResponse,
+  OAuthProvidersResponse,
+  OAuthStartResponse,
   PaginatedSessions,
   PairingResponse,
   ProfilesResponse,
+  RecommendedDefaultModel,
   SessionCreateResponse,
   SessionInfo,
   SessionMessagesResponse,
   SessionResumeResponse,
   SessionSearchResponse,
   SkillInfo,
-  StatusResponse
+  StatusResponse,
+  ToolsetInfo
 } from '@/types/hermes'
 import { apiRequest } from './http-client'
 import { getGateway } from './ws-client'
@@ -226,6 +240,116 @@ export function getProfiles(): Promise<ProfilesResponse> {
 
 export function getConfig(): Promise<HermesConfig> {
   return apiRequest<HermesConfig>('/api/config', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getConfigRecord(): Promise<HermesConfigRecord> {
+  return apiRequest<HermesConfigRecord>('/api/config')
+}
+
+export function getConfigDefaults(): Promise<HermesConfigRecord> {
+  return apiRequest<HermesConfigRecord>('/api/config/defaults', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getConfigSchema(): Promise<ConfigSchemaResponse> {
+  return apiRequest<ConfigSchemaResponse>('/api/config/schema')
+}
+
+export function saveConfig(config: HermesConfigRecord): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/config', { method: 'PUT', body: { config } })
+}
+
+export function getAuxiliaryModels(): Promise<AuxiliaryModelsResponse> {
+  return apiRequest<AuxiliaryModelsResponse>('/api/model/auxiliary')
+}
+
+export function setModelAssignment(body: ModelAssignmentRequest): Promise<ModelAssignmentResponse> {
+  return apiRequest<ModelAssignmentResponse>('/api/model/set', { method: 'POST', body })
+}
+
+export function getMoaModels(): Promise<MoaConfigResponse> {
+  return apiRequest<MoaConfigResponse>('/api/model/moa')
+}
+
+export function saveMoaModels(body: MoaConfigResponse): Promise<MoaConfigResponse & { ok: boolean }> {
+  return apiRequest<MoaConfigResponse & { ok: boolean }>('/api/model/moa', { method: 'PUT', body })
+}
+
+export function getRecommendedDefaultModel(provider: string): Promise<RecommendedDefaultModel> {
+  return apiRequest<RecommendedDefaultModel>(`/api/model/recommended-default?provider=${encodeURIComponent(provider)}`)
+}
+
+export function getEnvVars(): Promise<Record<string, EnvVarInfo>> {
+  return apiRequest<Record<string, EnvVarInfo>>('/api/env')
+}
+
+export function setEnvVar(key: string, value: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/env', { method: 'PUT', body: { key, value } })
+}
+
+export function deleteEnvVar(key: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/env', { method: 'DELETE', body: { key } })
+}
+
+export function revealEnvVar(key: string): Promise<{ key: string; value: string }> {
+  return apiRequest<{ key: string; value: string }>('/api/env/reveal', { method: 'POST', body: { key } })
+}
+
+export function getCustomEndpoints(): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>('/api/providers/custom-endpoints')
+}
+
+export function saveCustomEndpoint(endpoint: CustomEndpointUpdate): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>('/api/providers/custom-endpoints', { method: 'POST', body: endpoint })
+}
+
+export function activateCustomEndpoint(id: string): Promise<{ ok: boolean; provider: string; model: string }> {
+  return apiRequest<{ ok: boolean; provider: string; model: string }>(
+    `/api/providers/custom-endpoints/${encodeURIComponent(id)}/activate`,
+    { method: 'POST' }
+  )
+}
+
+export function deleteCustomEndpoint(id: string): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>(`/api/providers/custom-endpoints/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function listOAuthProviders(): Promise<OAuthProvidersResponse> {
+  return apiRequest<OAuthProvidersResponse>('/api/providers/oauth')
+}
+
+export function disconnectOAuthProvider(providerId: string): Promise<{ ok: boolean; provider: string }> {
+  return apiRequest<{ ok: boolean; provider: string }>(`/api/providers/oauth/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function startOAuthLogin(providerId: string): Promise<OAuthStartResponse> {
+  return apiRequest<OAuthStartResponse>(`/api/providers/oauth/${encodeURIComponent(providerId)}/start`, {
+    method: 'POST'
+  })
+}
+
+export function pollOAuth(providerId: string, sessionId: string): Promise<OAuthPollResponse> {
+  return apiRequest<OAuthPollResponse>(
+    `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`
+  )
+}
+
+export function getToolsets(): Promise<ToolsetInfo[]> {
+  return apiRequest<ToolsetInfo[]>('/api/tools/toolsets')
+}
+
+export function setToolsetEnabled(name: string, enabled: boolean): Promise<{ ok: boolean; name: string; enabled: boolean }> {
+  return apiRequest<{ ok: boolean; name: string; enabled: boolean }>(
+    `/api/tools/toolsets/${encodeURIComponent(name)}`,
+    { method: 'PUT', body: { enabled } }
+  )
+}
+
+export function restartGateway(): Promise<{ ok: boolean; message?: string }> {
+  return apiRequest<{ ok: boolean; message?: string }>('/api/gateway/restart', { method: 'POST' })
 }
 
 export function getSkills(): Promise<SkillInfo[]> {

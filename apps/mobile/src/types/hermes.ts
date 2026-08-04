@@ -306,9 +306,12 @@ export interface AudioSpeakResponse {
 export interface EnvVarInfo {
   advanced: boolean
   category: string
+  channel_managed?: boolean
   description: string
   is_password: boolean
   is_set: boolean
+  provider?: string
+  provider_label?: string
   redacted_value: null | string
   tools: string[]
   url: null | string
@@ -338,9 +341,12 @@ export interface McpServerSummary {
 }
 
 export interface ToolsetInfo {
+  configured?: boolean
   description?: string
   enabled: boolean
+  label?: string
   name: string
+  tools?: string[]
 }
 
 export interface FsListEntry {
@@ -365,6 +371,144 @@ export interface GitStatusResponse {
 export interface GitFileDiffResponse {
   diff: string
   path: string
+}
+
+export interface AuxiliaryTaskAssignment {
+  base_url: string
+  model: string
+  provider: string
+  task: string
+}
+
+export interface AuxiliaryModelsResponse {
+  main: { model: string; provider: string }
+  tasks: AuxiliaryTaskAssignment[]
+}
+
+export interface MoaModelSlot {
+  provider: string
+  model: string
+  reasoning_effort?: string
+  enabled?: boolean
+}
+
+export interface MoaPresetConfig {
+  aggregator: MoaModelSlot
+  aggregator_temperature: number
+  degraded_reference_policy: 'loud' | 'silent'
+  enabled: boolean
+  max_tokens: number
+  reference_models: MoaModelSlot[]
+  reference_temperature: number
+  reference_max_tokens?: number | null
+  fanout?: string
+  reference_timeout: number | null
+}
+
+export interface MoaConfigResponse {
+  default_preset: string
+  active_preset: string
+  presets: Record<string, MoaPresetConfig>
+  aggregator: MoaModelSlot
+  aggregator_temperature: number
+  degraded_reference_policy: 'loud' | 'silent'
+  enabled: boolean
+  max_tokens: number
+  reference_models: MoaModelSlot[]
+  reference_temperature: number
+  reference_timeout: number | null
+}
+
+export interface ModelAssignmentRequest {
+  api_key?: string
+  base_url?: string
+  model: string
+  provider: string
+  scope: 'main' | 'auxiliary'
+  task?: string
+}
+
+export interface StaleAuxAssignment {
+  task: string
+  provider: string
+  model: string
+}
+
+export interface ModelAssignmentResponse {
+  ok?: boolean
+  provider: string
+  model: string
+  stale_aux?: StaleAuxAssignment[]
+}
+
+export interface RecommendedDefaultModel {
+  model: string
+  provider?: string
+}
+
+export interface OAuthProvider {
+  connected?: boolean
+  disconnectable?: boolean
+  docs_url: string
+  flow: 'device_code' | 'external' | 'pkce'
+  id: string
+  name: string
+  status: string
+}
+
+export interface OAuthProvidersResponse {
+  providers: OAuthProvider[]
+}
+
+export type OAuthStartResponse =
+  | { auth_url: string; expires_in: number; flow: 'pkce'; session_id: string }
+  | {
+      expires_in: number
+      flow: 'device_code'
+      poll_interval: number
+      session_id: string
+      user_code: string
+      verification_url: string
+    }
+
+export interface OAuthPollResponse {
+  error_message?: null | string
+  expires_at?: null | number
+  session_id: string
+  status: 'approved' | 'denied' | 'error' | 'expired' | 'pending'
+}
+
+export interface CustomEndpoint {
+  api_key_preview?: null | string
+  base_url: string
+  context_length?: null | number
+  discover_models: boolean
+  has_api_key: boolean
+  id: string
+  is_current?: boolean
+  model: string
+  models: string[]
+  name: string
+  source?: string
+}
+
+export interface CustomEndpointsResponse {
+  current: { base_url: string; model: string; provider: string }
+  endpoints: CustomEndpoint[]
+  id?: string
+  ok?: boolean
+}
+
+export interface CustomEndpointUpdate {
+  api_key?: string
+  base_url: string
+  context_length?: number
+  discover_models?: boolean
+  id?: string
+  make_default?: boolean
+  model: string
+  models?: string[]
+  name: string
 }
 
 export interface ArtifactInfo {

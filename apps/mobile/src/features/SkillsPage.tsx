@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import * as api from '@/gateway/api'
 import type { SkillInfo } from '@/types/hermes'
-import { BottomSheet } from '@/ui/BottomSheet'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
 
@@ -50,7 +50,7 @@ export function SkillsPage({ open, onClose }: SkillsPageProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={t.skills.title} fullScreen>
+    <ResponsiveSheet open={open} onClose={onClose} title={t.skills.title}>
       <div className="mb-3 flex items-center gap-2 rounded-[var(--btn-radius)] bg-(--ui-bg-quaternary) px-2.5 py-2">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-(--ui-text-quaternary)"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
         <input value={query} onChange={event => setQuery(event.target.value)} placeholder={t.skills.searchPlaceholder} className="min-w-0 flex-1 bg-transparent text-(--conversation-text-font-size) text-(--ui-text-primary) outline-none placeholder:text-(--ui-text-quaternary)" />
@@ -94,6 +94,6 @@ export function SkillsPage({ open, onClose }: SkillsPageProps) {
           </button>
         ))}
       </div>
-    </BottomSheet>
+    </ResponsiveSheet>
   )
 }

@@ -6,12 +6,12 @@ import { $pendingApprovals, $pendingClarifications, $pendingSecrets, resolveAppr
 import { $sessions, $sessionsLoading, $activeSessionId, $currentCwd, refreshSessions, openSession, closeSession, createNewSession } from '@/sessions/store'
 import { logout } from '@/auth'
 import { Drawer } from '@/ui/Drawer'
-import { MobileSheet } from '@/ui/BottomSheet'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { Button } from '@/ui/Button'
 import { Input } from '@/ui/Input'
 import { SessionDetail } from '@/sessions/SessionDetail'
 import { MobileHeader } from '@/components/MobileHeader'
-import { MobileSettingsModal } from '@/components/MobileSettingsModal'
+import { SettingsPage } from '@/settings/SettingsPage'
 import { WorkspaceSheet } from '@/workspace/WorkspaceSheet'
 import { SkillsPage } from '@/features/SkillsPage'
 import { CronPage } from '@/features/CronPage'
@@ -120,7 +120,7 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
           />
         </Drawer>
 
-      <MobileSettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPage open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <WorkspaceSheet open={workspaceOpen} onClose={() => setWorkspaceOpen(false)} cwd={currentCwd || undefined} />
       <SkillsPage open={skillsOpen} onClose={() => setSkillsOpen(false)} />
       <CronPage open={cronOpen} onClose={() => setCronOpen(false)} />
@@ -158,7 +158,7 @@ function ApprovalSheet({ requestId, command, description }: { requestId: string;
   const { t } = useI18n()
 
   return (
-    <MobileSheet open onClose={() => {}} title={t.approvals.approvalRequired}>
+    <ResponsiveSheet compact open onClose={() => {}} title={t.approvals.approvalRequired}>
       <div className="space-y-3">
         {description && <p className="text-xs text-(--ui-text-secondary)">{description}</p>}
         {command && (
@@ -171,7 +171,7 @@ function ApprovalSheet({ requestId, command, description }: { requestId: string;
           <Button className="flex-1" variant="secondary" onClick={() => resolveApproval(requestId, false)}>{t.approvals.deny}</Button>
         </div>
       </div>
-    </MobileSheet>
+    </ResponsiveSheet>
   )
 }
 
@@ -180,7 +180,7 @@ function ClarifySheet({ requestId, question, choices }: { requestId: string; que
   const [answer, setAnswer] = useState('')
 
   return (
-    <MobileSheet open onClose={() => {}} title={t.approvals.inputNeeded}>
+    <ResponsiveSheet compact open onClose={() => {}} title={t.approvals.inputNeeded}>
       <div className="space-y-3">
         <p className="text-xs text-(--ui-text-primary)">{question}</p>
 
@@ -214,7 +214,7 @@ function ClarifySheet({ requestId, question, choices }: { requestId: string; que
           </>
         )}
       </div>
-    </MobileSheet>
+    </ResponsiveSheet>
   )
 }
 
@@ -223,7 +223,7 @@ function SecretSheet({ requestId, envVar, prompt }: { requestId: string; envVar:
   const [value, setValue] = useState('')
 
   return (
-    <MobileSheet open onClose={() => {}} title={t.approvals.credentialRequired}>
+    <ResponsiveSheet compact open onClose={() => {}} title={t.approvals.credentialRequired}>
       <div className="space-y-3">
         <p className="text-xs text-(--ui-text-secondary)">{prompt ?? t.approvals.credentialPrompt(envVar)}</p>
         <Input
@@ -244,6 +244,6 @@ function SecretSheet({ requestId, envVar, prompt }: { requestId: string; envVar:
           {t.approvals.submit}
         </Button>
       </div>
-    </MobileSheet>
+    </ResponsiveSheet>
   )
 }

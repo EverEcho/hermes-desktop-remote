@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
 import type { MessagingPlatformInfo, PairingResponse } from '@/types/hermes'
-import { BottomSheet } from '@/ui/BottomSheet'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
 
@@ -66,7 +66,7 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={t.messaging.title} fullScreen>
+    <ResponsiveSheet open={open} onClose={onClose} title={t.messaging.title}>
       <div className="mb-3 flex items-center justify-between">
         <p className="text-(--conversation-caption-font-size) text-(--ui-text-tertiary)">
           {t.messaging.subtitle}
@@ -115,7 +115,7 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
           ))}
         </section>
       )}
-    </BottomSheet>
+    </ResponsiveSheet>
   )
 }
 

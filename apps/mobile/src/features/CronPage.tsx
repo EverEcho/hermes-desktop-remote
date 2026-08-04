@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
 import type { CronJob } from '@/types/hermes'
-import { BottomSheet } from '@/ui/BottomSheet'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
 
@@ -63,7 +63,7 @@ export function CronPage({ open, onClose }: CronPageProps) {
   }
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={t.cron.title} fullScreen>
+    <ResponsiveSheet open={open} onClose={onClose} title={t.cron.title}>
       <div className="mb-3 flex justify-end">
         <button className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white" onClick={() => setEditor('new')}>{t.cron.new}</button>
       </div>
@@ -129,7 +129,7 @@ export function CronPage({ open, onClose }: CronPageProps) {
       </div>
 
       {editor && <CronEditor job={editor === 'new' ? undefined : editor} onClose={() => setEditor(null)} onSaved={job => { setJobs(previous => editor === 'new' ? [...previous, job] : previous.map(row => row.id === job.id ? job : row)); setEditor(null) }} />}
-    </BottomSheet>
+    </ResponsiveSheet>
   )
 }
 
@@ -158,7 +158,7 @@ function CronEditor({ job, onClose, onSaved }: { job?: CronJob; onClose: () => v
     }
   }
 
-  return <div className="fixed inset-0 z-[60] flex items-end bg-black/40" onClick={onClose}><div className="w-full rounded-t-xl bg-(--ui-bg-elevated) p-4 pb-[calc(1rem+var(--safe-area-bottom))]" onClick={event => event.stopPropagation()}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold text-(--ui-text-primary)">{job ? t.cron.editTitle : t.cron.newTitle}</h2><button className="text-xs text-(--ui-text-tertiary)" onClick={onClose}>{t.common.close}</button></div><EditorField label={t.cron.name} value={name} onChange={setName} placeholder={t.cron.namePlaceholder} /><EditorField label={t.cron.schedule} value={cron} onChange={setCron} placeholder="0 9 * * 1-5" /><label className="mb-3 block"><span className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{t.cron.prompt}</span><textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={4} className="w-full resize-none rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2.5 py-2 text-xs text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" placeholder={t.cron.promptPlaceholder} /></label>{error && <p className="mb-3 text-xs text-(--ui-red)">{error}</p>}<button disabled={!valid || saving} onClick={() => void save()} className="w-full rounded-md bg-(--ui-accent) px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{saving ? t.common.saving : t.cron.saveCron}</button></div></div>
+  return <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 md:items-center md:p-6" onClick={onClose}><div className="w-full md:w-auto md:min-w-[26rem] md:max-h-[80vh] md:overflow-y-auto rounded-t-xl md:rounded-xl bg-(--ui-bg-elevated) p-4 pb-[calc(1rem+var(--safe-area-bottom))]" onClick={event => event.stopPropagation()}><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold text-(--ui-text-primary)">{job ? t.cron.editTitle : t.cron.newTitle}</h2><button className="text-xs text-(--ui-text-tertiary)" onClick={onClose}>{t.common.close}</button></div><EditorField label={t.cron.name} value={name} onChange={setName} placeholder={t.cron.namePlaceholder} /><EditorField label={t.cron.schedule} value={cron} onChange={setCron} placeholder="0 9 * * 1-5" /><label className="mb-3 block"><span className="mb-1 block text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{t.cron.prompt}</span><textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={4} className="w-full resize-none rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2.5 py-2 text-xs text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" placeholder={t.cron.promptPlaceholder} /></label>{error && <p className="mb-3 text-xs text-(--ui-red)">{error}</p>}<button disabled={!valid || saving} onClick={() => void save()} className="w-full rounded-md bg-(--ui-accent) px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{saving ? t.common.saving : t.cron.saveCron}</button></div></div>
 }
 
 function EditorField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
