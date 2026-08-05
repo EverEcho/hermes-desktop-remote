@@ -1,10 +1,11 @@
 import type { GatewayEvent } from '@hermes/shared'
 import { atom } from 'nanostores'
 
-import type { SessionInfo, SessionMessage } from '@/types/hermes'
+import type { SessionInfo, SessionMessage, SessionResumeResponse } from '@/types/hermes'
 import type { MobileMessage, MobileMessagePart } from '@/types/mobile'
 import * as api from '@/gateway/api'
 import { onGatewayEvent } from '@/gateway'
+import { translateNow } from '@/i18n'
 
 export const $sessions = atom<SessionInfo[]>([])
 export const $sessionsLoading = atom(true)
@@ -42,6 +43,7 @@ export async function openSession(storedSessionId: string): Promise<void> {
   $messages.set([])
   $busy.set(false)
   $awaitingResponse.set(false)
+  $sessionTitle.set($sessions.get().find(s => s.id === storedSessionId)?.title ?? null)
 
   eventCleanup?.()
   eventCleanup = onGatewayEvent(event => handleSessionEvent(event, generation))
@@ -54,7 +56,6 @@ export async function openSession(storedSessionId: string): Promise<void> {
     }
 
     $activeRuntimeId.set(resumeResult.session_id)
-    $sessionTitle.set(null)
 
     if (resumeResult.info) {
       $currentModel.set(resumeResult.info.model ?? '')
@@ -63,8 +64,10 @@ export async function openSession(storedSessionId: string): Promise<void> {
       $busy.set(resumeResult.info.running ?? false)
     }
 
+    let restored: MobileMessage[] = []
+
     if (resumeResult.messages?.length) {
-      $messages.set(convertMessages(resumeResult.messages))
+      restored = convertMessages(resumeResult.messages)
     } else {
       const transcript = await api.getSessionMessages(storedSessionId)
 
@@ -72,8 +75,10 @@ export async function openSession(storedSessionId: string): Promise<void> {
         return
       }
 
-      $messages.set(convertMessages(transcript.messages))
+      restored = convertMessages(transcript.messages)
     }
+
+    $messages.set(appendInflightProjection(restored, resumeResult))
   } catch (_error) {
     if (generation !== activeSessionGeneration) {
       return
@@ -108,6 +113,7 @@ export interface SendMessageOptions {
   provider?: string
   reasoningEffort?: string
   attachments?: Array<{ data_url: string; filename: string }>
+  truncateBeforeUserOrdinal?: number
 }
 
 export async function sendMessage(
@@ -129,7 +135,10 @@ export async function sendMessage(
     timestamp: Date.now() / 1000
   }
 
-  $messages.set([...$messages.get(), userMessage])
+  // A fresh user message may never land after a still-pending assistant
+  // bubble — settle any leftover (drop it when empty) before appending, or a
+  // stale spinner gets stranded mid-transcript above this message forever.
+  $messages.set([...finalizeInterruptedMessages($messages.get()), userMessage])
   $busy.set(true)
   $awaitingResponse.set(true)
 
@@ -147,11 +156,13 @@ export async function sendMessage(
       message.id === userMessage.id ? { ...message, failed: true } : message
     ))
 
+    const rawMessage = error instanceof Error ? error.message : 'Failed to send message'
+
     const errorMessage: MobileMessage = {
       id: `error-${Date.now()}`,
       role: 'assistant',
       parts: [],
-      error: error instanceof Error ? error.message : 'Failed to send message',
+      error: friendlyErrorText(rawMessage),
       retryText: text.trim(),
       retryUserMessageId: userMessage.id,
       timestamp: Date.now() / 1000
@@ -166,6 +177,197 @@ export async function retryMessage(errorMessageId: string, text: string, userMes
     message.id !== errorMessageId && message.id !== userMessageId
   ))
   await sendMessage(text)
+}
+
+export function appendSystemMessage(text: string): void {
+  const message: MobileMessage = {
+    id: `system-${Date.now()}`,
+    role: 'assistant',
+    parts: [{ type: 'text', text }],
+    timestamp: Date.now() / 1000
+  }
+
+  $messages.set([...$messages.get(), message])
+}
+
+function messageText(message: MobileMessage): string {
+  return message.parts
+    .filter(part => part.type === 'text')
+    .map(part => part.text)
+    .join('\n')
+    .trim()
+}
+
+function hasVisibleContent(message: MobileMessage): boolean {
+  return message.parts.some(
+    part =>
+      (part.type === 'text' && part.text.trim().length > 0) || part.type === 'tool-call' || part.type === 'reasoning'
+  )
+}
+
+/* Port of Desktop rewind.ts finalizeInterruptedMessages: drop empty pending
+ * placeholders and un-pend the rest. A turn ending without message.complete
+ * (crash, reconnect gap) must not strand a thinking spinner mid-transcript. */
+function finalizeInterruptedMessages(messages: MobileMessage[]): MobileMessage[] {
+  let changed = false
+
+  const next = messages.reduce<MobileMessage[]>((acc, message) => {
+    if (message.pending && !hasVisibleContent(message)) {
+      changed = true
+      return acc
+    }
+
+    if (message.pending) {
+      changed = true
+      acc.push({ ...message, pending: false })
+      return acc
+    }
+
+    acc.push(message)
+    return acc
+  }, [])
+
+  return changed ? next : messages
+}
+
+/* Port of Desktop store/notifications.ts isDiskFullErrorMessage. */
+export function isDiskFullErrorMessage(message: string): boolean {
+  return (
+    /no space left on device/i.test(message) ||
+    /not enough space/i.test(message) ||
+    /database or disk is full/i.test(message) ||
+    /\bENOSPC\b/i.test(message) ||
+    /disk full/i.test(message) ||
+    /full disk/i.test(message)
+  )
+}
+
+function friendlyErrorText(raw: string): string {
+  return isDiskFullErrorMessage(raw) ? translateNow().errors.diskFull : raw
+}
+
+function userOrdinalAt(messages: MobileMessage[], index: number): number {
+  let ordinal = 0
+
+  for (let i = 0; i < index; i++) {
+    if (messages[i].role === 'user') {
+      ordinal++
+    }
+  }
+
+  return ordinal
+}
+
+/* Edit + resend (Desktop rewind.ts port): truncate the transcript at the
+ * edited user turn and resubmit. Failed turns never reached the gateway, so
+ * they resubmit plainly instead of truncating by ordinal. */
+export async function editAndResend(messageId: string, newText: string): Promise<void> {
+  const runtimeId = $activeRuntimeId.get()
+  const storedSessionId = $activeSessionId.get()
+  const generation = activeSessionGeneration
+  const trimmed = newText.trim()
+
+  if (!runtimeId || !storedSessionId || !trimmed) {
+    return
+  }
+
+  const messages = $messages.get()
+  const sourceIndex = messages.findIndex(m => m.id === messageId && m.role === 'user')
+
+  if (sourceIndex < 0) {
+    return
+  }
+
+  const source = messages[sourceIndex]
+
+  if (messageText(source) === trimmed) {
+    return
+  }
+
+  const next = messages[sourceIndex + 1]
+  const isFailedTurn = source.failed === true || (next?.role === 'assistant' && Boolean(next.error))
+  const wasBusy = $busy.get()
+
+  const editedMessage: MobileMessage = { ...source, parts: [{ type: 'text', text: trimmed }] }
+
+  $messages.set([...messages.slice(0, sourceIndex), editedMessage])
+  $busy.set(true)
+  $awaitingResponse.set(true)
+
+  try {
+    if (wasBusy) {
+      try {
+        await api.interruptSession(runtimeId)
+      } catch {
+        // best effort — submit still gates on gateway state
+      }
+    }
+
+    await submitPromptWithRecovery(runtimeId, storedSessionId, trimmed, {
+      truncateBeforeUserOrdinal: isFailedTurn ? undefined : userOrdinalAt(messages, sourceIndex)
+    })
+  } catch (error) {
+    if (generation !== activeSessionGeneration || storedSessionId !== $activeSessionId.get()) {
+      return
+    }
+
+    $busy.set(false)
+    $awaitingResponse.set(false)
+
+    const errorMessage: MobileMessage = {
+      id: `error-${Date.now()}`,
+      role: 'assistant',
+      parts: [],
+      error: error instanceof Error ? error.message : 'Failed to send message',
+      retryText: trimmed,
+      timestamp: Date.now() / 1000
+    }
+
+    $messages.set([...$messages.get(), errorMessage])
+  }
+}
+
+/* Slash command dispatch — mirrors Desktop's use-prompt-actions/slash.ts:
+ * run via slash.exec; a `send` dispatch submits the returned message as a
+ * normal turn, plain output renders inline as a system message. */
+export async function sendSlashCommand(command: string): Promise<void> {
+  const runtimeId = $activeRuntimeId.get()
+  const storedSessionId = $activeSessionId.get()
+
+  if (!runtimeId || !storedSessionId || !command.trim()) {
+    return
+  }
+
+  const userMessage: MobileMessage = {
+    id: `user-${Date.now()}`,
+    role: 'user',
+    parts: [{ type: 'text', text: command.trim() }],
+    timestamp: Date.now() / 1000
+  }
+
+  $messages.set([...$messages.get(), userMessage])
+
+  try {
+    const result = await api.execSlash(runtimeId, command.trim())
+
+    if (storedSessionId !== $activeSessionId.get()) {
+      return
+    }
+
+    if (result?.type === 'send' && result.message) {
+      await sendMessage(result.message)
+      return
+    }
+
+    const body = result?.output || `${command.trim().split(/\s/)[0]}: no output`
+    appendSystemMessage(result?.warning ? `warning: ${result.warning}\n${body}` : body)
+  } catch (error) {
+    if (storedSessionId !== $activeSessionId.get()) {
+      return
+    }
+
+    appendSystemMessage(`error: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 async function submitPromptWithRecovery(
@@ -183,7 +385,7 @@ async function submitPromptWithRecovery(
     }
   }
 
-  const resumed = await api.resumeSession(storedSessionId)
+  const resumed = await api.resumeSession(storedSessionId, { omitMessages: true })
   const recoveredRuntimeId = resumed.session_id
 
   if (!recoveredRuntimeId || storedSessionId !== $activeSessionId.get()) {
@@ -421,7 +623,28 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
 
       if (typeof payload.running === 'boolean') {
         $busy.set(payload.running)
+
+        // The turn is over but its streaming bubble may still say pending —
+        // running=false from the agent loop's finally block is the ONLY settle
+        // signal when message.complete never arrives (turn crash, reconnect
+        // gap). finalizeInterruptedMessages un-pends kept text and drops empty
+        // placeholders; on the normal path message.complete already settled
+        // everything and this is a no-op. (Desktop gateway-event.ts parity.)
+        if (!payload.running) {
+          $awaitingResponse.set(false)
+          $messages.set(finalizeInterruptedMessages($messages.get()))
+        }
       }
+      break
+    }
+
+    case 'session.reclaimed': {
+      // The backend reclaimed the live session (idle TTL / LRU cap / WS-orphan
+      // reap). The stored row is untouched — keep the transcript, drop the live
+      // turn state; the next send re-binds via submitPromptWithRecovery.
+      $busy.set(false)
+      $awaitingResponse.set(false)
+      $messages.set(finalizeInterruptedMessages($messages.get()))
       break
     }
 
@@ -447,7 +670,7 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       $busy.set(false)
       $awaitingResponse.set(false)
 
-      const errorText = String(payload.message ?? payload.error ?? 'Unknown error')
+      const errorText = friendlyErrorText(String(payload.message ?? payload.error ?? 'Unknown error'))
       const updated = [...messages]
       const last = updated[updated.length - 1]
 
@@ -470,6 +693,66 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
     default:
       break
   }
+}
+
+/* Port of Desktop utils.ts appendLiveSessionProjection (simplified): paint the
+ * gateway's live-turn projection — the in-flight user turn, the streaming
+ * assistant bubble, or a queued user message — that the persisted transcript
+ * does not carry yet. Without it, reopening a running session shows none of
+ * the in-progress reply. */
+function appendInflightProjection(messages: MobileMessage[], resume: SessionResumeResponse): MobileMessage[] {
+  const inflight = resume.inflight
+  const queuedUser = resume.queued?.user?.trim()
+
+  if (!inflight && !queuedUser) {
+    return messages
+  }
+
+  const projected: MobileMessage[] = [...messages]
+  const now = Date.now() / 1000
+
+  const inflightUser = inflight?.user?.trim()
+
+  if (inflightUser) {
+    const alreadyPersisted = projected.some(
+      message => message.role === 'user' && messageText(message) === inflightUser
+    )
+
+    if (!alreadyPersisted) {
+      projected.push({
+        id: `inflight-user-${Date.now()}`,
+        role: 'user',
+        parts: [{ type: 'text', text: inflightUser }],
+        timestamp: now
+      })
+    }
+  }
+
+  const inflightAssistant = inflight?.assistant ?? ''
+  const inflightStreaming = inflight?.streaming === true
+  const inflightError = inflight?.error?.trim()
+
+  if (inflightAssistant || inflightStreaming || inflightError) {
+    projected.push({
+      id: `inflight-assistant-${Date.now()}`,
+      role: 'assistant',
+      parts: inflightAssistant ? [{ type: 'text', text: inflightAssistant }] : [],
+      pending: inflightStreaming,
+      ...(inflightError ? { error: friendlyErrorText(inflightError) } : {}),
+      timestamp: now
+    })
+  }
+
+  if (queuedUser) {
+    projected.push({
+      id: `queued-user-${Date.now()}`,
+      role: 'user',
+      parts: [{ type: 'text', text: queuedUser }],
+      timestamp: now
+    })
+  }
+
+  return projected
 }
 
 function convertMessages(raw: SessionMessage[]): MobileMessage[] {

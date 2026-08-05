@@ -1,6 +1,8 @@
 import type { GatewayEvent } from '@hermes/shared'
 import { atom } from 'nanostores'
 
+import { recordSessionMapping, setSessionDot } from '@/sessions/session-states'
+
 import { getGateway } from './ws-client'
 
 export interface ApprovalRequest {
@@ -25,6 +27,11 @@ export interface SecretRequest {
   prompt?: string
 }
 
+export interface SudoRequest {
+  requestId: string
+  sessionId: string
+}
+
 export interface TerminalOutput {
   processId: string
   sessionId: string
@@ -36,6 +43,7 @@ export interface TerminalOutput {
 export const $pendingApprovals = atom<ApprovalRequest[]>([])
 export const $pendingClarifications = atom<ClarifyRequest[]>([])
 export const $pendingSecrets = atom<SecretRequest[]>([])
+export const $pendingSudo = atom<SudoRequest[]>([])
 export const $terminalOutputs = atom<Map<string, TerminalOutput>>(new Map())
 
 type EventCallback = (event: GatewayEvent) => void
@@ -74,6 +82,43 @@ export function stopEventRouter(): void {
 
 function routeEvent(event: GatewayEvent): void {
   const payload = (event.payload ?? {}) as Record<string, unknown>
+  const sessionId = event.session_id ?? ''
+
+  /* Sidebar status dots (Desktop session-states parity, simplified). */
+  switch (event.type) {
+    case 'session.info': {
+      const storedId = payload.stored_session_id
+
+      if (sessionId && typeof storedId === 'string' && storedId) {
+        recordSessionMapping(sessionId, storedId)
+      }
+      break
+    }
+
+    case 'message.start':
+      setSessionDot(sessionId, 'working')
+      break
+
+    case 'message.complete':
+    case 'error':
+      setSessionDot(sessionId, null)
+      break
+
+    case 'session.reclaimed':
+      // The live session is gone — drop any working/needs-input dot.
+      setSessionDot(sessionId, null)
+      break
+
+    case 'approval.request':
+    case 'clarify.request':
+    case 'secret.request':
+    case 'sudo.request':
+      setSessionDot(sessionId, 'needs-input')
+      break
+
+    default:
+      break
+  }
 
   switch (event.type) {
     case 'approval.request': {
@@ -110,6 +155,17 @@ function routeEvent(event: GatewayEvent): void {
       break
     }
 
+    case 'sudo.request': {
+      const requestId = String(payload.request_id ?? '')
+      if (!requestId) break
+      const request: SudoRequest = {
+        requestId,
+        sessionId: event.session_id ?? ''
+      }
+      $pendingSudo.set([...$pendingSudo.get(), request])
+      break
+    }
+
     case 'agent.terminal.output': {
       const processId = String(payload.process_id ?? '')
       const outputs = $terminalOutputs.get()
@@ -139,6 +195,8 @@ export function resolveApproval(requestId: string, approved: boolean, permanent 
     return
   }
 
+  const request = $pendingApprovals.get().find(a => a.requestId === requestId)
+
   void gateway.request('approval.respond', {
     request_id: requestId,
     approved,
@@ -146,6 +204,10 @@ export function resolveApproval(requestId: string, approved: boolean, permanent 
   })
 
   $pendingApprovals.set($pendingApprovals.get().filter(a => a.requestId !== requestId))
+
+  if (request && !$pendingApprovals.get().some(a => a.sessionId === request.sessionId)) {
+    setSessionDot(request.sessionId, null)
+  }
 }
 
 export function resolveClarification(requestId: string, answer: string): void {
@@ -155,12 +217,18 @@ export function resolveClarification(requestId: string, answer: string): void {
     return
   }
 
+  const request = $pendingClarifications.get().find(c => c.requestId === requestId)
+
   void gateway.request('clarify.respond', {
     request_id: requestId,
     answer
   })
 
   $pendingClarifications.set($pendingClarifications.get().filter(c => c.requestId !== requestId))
+
+  if (request && !$pendingClarifications.get().some(c => c.sessionId === request.sessionId)) {
+    setSessionDot(request.sessionId, null)
+  }
 }
 
 export function resolveSecret(requestId: string, value: string): void {
@@ -170,10 +238,39 @@ export function resolveSecret(requestId: string, value: string): void {
     return
   }
 
+  const request = $pendingSecrets.get().find(s => s.requestId === requestId)
+
   void gateway.request('secret.respond', {
     request_id: requestId,
     value
   })
 
   $pendingSecrets.set($pendingSecrets.get().filter(s => s.requestId !== requestId))
+
+  if (request && !$pendingSecrets.get().some(s => s.sessionId === request.sessionId)) {
+    setSessionDot(request.sessionId, null)
+  }
+}
+
+export function resolveSudo(requestId: string, password: string): void {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    return
+  }
+
+  const request = $pendingSudo.get().find(s => s.requestId === requestId)
+
+  // The backend treats an empty password as a failed sudo (no command runs),
+  // so dismissing the sheet is a safe refusal.
+  void gateway.request('sudo.respond', {
+    request_id: requestId,
+    password
+  })
+
+  $pendingSudo.set($pendingSudo.get().filter(s => s.requestId !== requestId))
+
+  if (request && !$pendingSudo.get().some(s => s.sessionId === request.sessionId)) {
+    setSessionDot(request.sessionId, null)
+  }
 }

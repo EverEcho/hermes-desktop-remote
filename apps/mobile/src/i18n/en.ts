@@ -14,6 +14,9 @@ export const en = {
     saving: 'Saving…',
     refresh: 'Refresh'
   },
+  errors: {
+    diskFull: 'Disk full — free some space, then try again.'
+  },
   app: {
     connecting: 'Connecting…'
   },
@@ -40,6 +43,8 @@ export const en = {
     recent: 'Recent',
     pin: 'Pin chat',
     unpin: 'Unpin chat',
+    rename: 'Rename chat',
+    renamePrompt: 'New name for this chat',
     archive: 'Archive chat',
     deleteSession: 'Delete chat',
     deleteConfirm: (title: string) => `Delete "${title}" permanently? This cannot be undone.`,
@@ -87,6 +92,8 @@ export const en = {
     emptyHint: 'Start with a goal',
     thinking: 'Thinking…',
     retrySend: 'Retry send',
+    editMessage: 'Edit message',
+    saveAndSend: 'Save & resend',
     thought: 'Thought',
     ranCommands: (n: number) => `Ran ${n} commands`,
     exploredFiles: (n: number) => `Explored ${n} files`,
@@ -100,11 +107,15 @@ export const en = {
     approvalRequired: 'Approval required',
     approve: 'Approve',
     deny: 'Deny',
+    alwaysAllow: 'Always allow',
     inputNeeded: 'Input needed',
     answerPlaceholder: 'Type your answer…',
     submit: 'Submit',
     credentialRequired: 'Credential required',
-    credentialPrompt: (envVar: string) => `Enter value for ${envVar}`
+    credentialPrompt: (envVar: string) => `Enter value for ${envVar}`,
+    sudoTitle: 'Sudo password required',
+    sudoDesc: 'The agent needs your sudo password to run a privileged command. It is sent to the gateway and never stored.',
+    sudoPlaceholder: 'Sudo password'
   },
   settings: {
     title: 'Settings',
@@ -448,6 +459,13 @@ export const en = {
     commitPlaceholder: 'Describe this change',
     commit: 'Commit',
     commitFailed: 'Could not create commit.',
+    push: 'Push',
+    pushFailed: 'Could not push to remote.',
+    revert: 'Revert',
+    revertConfirm: (file: string) => `Discard changes to ${file}? This cannot be undone.`,
+    revertFailed: (file: string) => `Could not revert ${file}.`,
+    diff: 'Diff',
+    diffEmpty: 'No diff available',
     clean: 'Working tree clean'
   }
 }

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useStore } from '@nanostores/react'
 
 import { $connectionState, reconnectGateway } from '@/gateway'
-import { $pendingApprovals, $pendingClarifications, $pendingSecrets, resolveApproval, resolveClarification, resolveSecret } from '@/gateway'
-import { $sessions, $sessionsLoading, $activeSessionId, $currentCwd, refreshSessions, openSession, closeSession, createNewSession } from '@/sessions/store'
+import { $pendingApprovals, $pendingClarifications, $pendingSecrets, $pendingSudo, onGatewayEvent, resolveApproval, resolveClarification, resolveSecret, resolveSudo } from '@/gateway'
+import { $sessions, $sessionsLoading, $activeSessionId, $currentCwd, $sessionTitle, refreshSessions, openSession, closeSession, createNewSession } from '@/sessions/store'
 import { logout } from '@/auth'
 import { Drawer } from '@/ui/Drawer'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
@@ -32,12 +32,24 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   const sessionsLoading = useStore($sessionsLoading)
   const activeSessionId = useStore($activeSessionId)
   const currentCwd = useStore($currentCwd)
+  const sessionTitle = useStore($sessionTitle)
   const pendingApprovals = useStore($pendingApprovals)
   const pendingClarifications = useStore($pendingClarifications)
   const pendingSecrets = useStore($pendingSecrets)
+  const pendingSudo = useStore($pendingSudo)
 
   useEffect(() => {
     void refreshSessions()
+  }, [])
+
+  /* Live session-list sync (Desktop live-sync parity). session.reclaimed moves
+   * the row's ended_at without a sessions.changed broadcast. */
+  useEffect(() => {
+    return onGatewayEvent(event => {
+      if (event.type === 'sessions.changed' || event.type === 'session.reclaimed') {
+        void refreshSessions()
+      }
+    })
   }, [])
 
   const handleSelectSession = useCallback((id: string) => {
@@ -93,7 +105,8 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
           onSettingsPress={() => setSettingsOpen(true)}
           connectionState={connectionState}
           onRetry={handleRetry}
-          title={activeSessionId ? undefined : 'RHermes'}
+          title={activeSessionId ? sessionTitle ?? undefined : 'RHermes'}
+          subtitle={activeSessionId && currentCwd ? currentCwd.split('/').pop() : undefined}
           onBack={activeSessionId ? handleBack : undefined}
           onWorkspacePress={activeSessionId ? () => setWorkspaceOpen(true) : undefined}
         />
@@ -131,7 +144,12 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
           requestId={pendingApprovals[0].requestId}
           command={pendingApprovals[0].command}
           description={pendingApprovals[0].description}
+          allowPermanent={pendingApprovals[0].allowPermanent}
         />
+      )}
+
+      {pendingSudo.length > 0 && (
+        <SudoSheet requestId={pendingSudo[0].requestId} />
       )}
 
       {pendingClarifications.length > 0 && (
@@ -154,7 +172,7 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   )
 }
 
-function ApprovalSheet({ requestId, command, description }: { requestId: string; command?: string; description?: string }) {
+function ApprovalSheet({ requestId, command, description, allowPermanent }: { requestId: string; command?: string; description?: string; allowPermanent?: boolean }) {
   const { t } = useI18n()
 
   return (
@@ -169,6 +187,47 @@ function ApprovalSheet({ requestId, command, description }: { requestId: string;
         <div className="flex gap-2">
           <Button className="flex-1" onClick={() => resolveApproval(requestId, true)}>{t.approvals.approve}</Button>
           <Button className="flex-1" variant="secondary" onClick={() => resolveApproval(requestId, false)}>{t.approvals.deny}</Button>
+        </div>
+        {allowPermanent && (
+          <Button className="w-full" variant="secondary" onClick={() => resolveApproval(requestId, true, true)}>
+            {t.approvals.alwaysAllow}
+          </Button>
+        )}
+      </div>
+    </ResponsiveSheet>
+  )
+}
+
+function SudoSheet({ requestId }: { requestId: string }) {
+  const { t } = useI18n()
+  const [password, setPassword] = useState('')
+
+  return (
+    <ResponsiveSheet compact open onClose={() => resolveSudo(requestId, '')} title={t.approvals.sudoTitle}>
+      <div className="space-y-3">
+        <p className="text-xs text-(--ui-text-secondary)">{t.approvals.sudoDesc}</p>
+        <Input
+          type="password"
+          autoFocus
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder={t.approvals.sudoPlaceholder}
+          className="font-mono"
+        />
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            disabled={!password}
+            onClick={() => {
+              resolveSudo(requestId, password)
+              setPassword('')
+            }}
+          >
+            {t.approvals.submit}
+          </Button>
+          <Button className="flex-1" variant="secondary" onClick={() => resolveSudo(requestId, '')}>
+            {t.approvals.deny}
+          </Button>
         </div>
       </div>
     </ResponsiveSheet>

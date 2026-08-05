@@ -12,6 +12,9 @@ export const zh: Catalog = {
     saving: '保存中…',
     refresh: '刷新'
   },
+  errors: {
+    diskFull: '磁盘已满 — 请腾出一些空间后再试。'
+  },
   app: {
     connecting: '连接中…'
   },
@@ -38,6 +41,8 @@ export const zh: Catalog = {
     recent: '最近',
     pin: '置顶对话',
     unpin: '取消置顶',
+    rename: '重命名对话',
+    renamePrompt: '输入新的对话名称',
     archive: '归档对话',
     deleteSession: '删除对话',
     deleteConfirm: (title: string) => `确定要彻底删除 "${title}" 吗？该操作不可撤销。`,
@@ -85,6 +90,8 @@ export const zh: Catalog = {
     emptyHint: '从一个目标开始',
     thinking: '思考中…',
     retrySend: '重试发送',
+    editMessage: '编辑消息',
+    saveAndSend: '保存并重新发送',
     thought: '已思考',
     ranCommands: (n: number) => `运行了 ${n} 个命令`,
     exploredFiles: (n: number) => `浏览了 ${n} 个文件`,
@@ -98,11 +105,15 @@ export const zh: Catalog = {
     approvalRequired: '需要审批',
     approve: '批准',
     deny: '拒绝',
+    alwaysAllow: '始终允许',
     inputNeeded: '需要输入',
     answerPlaceholder: '输入你的回答…',
     submit: '提交',
     credentialRequired: '需要凭据',
-    credentialPrompt: (envVar: string) => `输入 ${envVar} 的值`
+    credentialPrompt: (envVar: string) => `输入 ${envVar} 的值`,
+    sudoTitle: '需要 Sudo 密码',
+    sudoDesc: '代理需要你的 sudo 密码来执行特权命令。密码仅发送至网关，不会被存储。',
+    sudoPlaceholder: 'Sudo 密码'
   },
   settings: {
     title: '设置',
@@ -445,6 +456,13 @@ export const zh: Catalog = {
     commitPlaceholder: '描述这次更改',
     commit: '提交',
     commitFailed: '无法创建提交。',
+    push: '推送',
+    pushFailed: '无法推送到远程。',
+    revert: '还原',
+    revertConfirm: (file: string) => `丢弃 ${file} 的更改？此操作无法撤销。`,
+    revertFailed: (file: string) => `无法还原 ${file}。`,
+    diff: '差异',
+    diffEmpty: '暂无差异',
     clean: '工作区干净'
   }
 } satisfies Catalog

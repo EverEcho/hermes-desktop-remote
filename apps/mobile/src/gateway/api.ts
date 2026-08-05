@@ -99,7 +99,10 @@ export function deleteSession(id: string): Promise<{ ok: boolean }> {
   })
 }
 
-export async function resumeSession(storedSessionId: string): Promise<SessionResumeResponse> {
+export async function resumeSession(
+  storedSessionId: string,
+  options?: { omitMessages?: boolean }
+): Promise<SessionResumeResponse> {
   const gateway = getGateway()
 
   if (!gateway) {
@@ -107,7 +110,8 @@ export async function resumeSession(storedSessionId: string): Promise<SessionRes
   }
 
   return gateway.request<SessionResumeResponse>('session.resume', {
-    session_id: storedSessionId
+    session_id: storedSessionId,
+    ...(options?.omitMessages ? { omit_messages: true } : {})
   })
 }
 
@@ -175,6 +179,7 @@ export async function submitPrompt(
     provider?: string
     reasoningEffort?: string
     attachments?: Array<{ data_url: string; filename: string }>
+    truncateBeforeUserOrdinal?: number
   }
 ): Promise<unknown> {
   const gateway = getGateway()
@@ -204,6 +209,14 @@ export async function submitPrompt(
     params.attachments = options.attachments
   }
 
+  if (options?.truncateBeforeUserOrdinal !== undefined) {
+    params.truncate_before_user_ordinal = options.truncateBeforeUserOrdinal
+
+    if (options.truncateBeforeUserOrdinal === 0) {
+      params.confirm_empty_truncate = true
+    }
+  }
+
   return gateway.request('prompt.submit', params, 1_800_000)
 }
 
@@ -215,6 +228,40 @@ export async function interruptSession(sessionId: string): Promise<unknown> {
   }
 
   return gateway.request('session.interrupt', { session_id: sessionId })
+}
+
+export interface SlashCompletionItem {
+  text: string
+  display?: string
+  meta?: string
+}
+
+export async function completeSlash(text: string): Promise<{ items?: SlashCompletionItem[]; replace_from?: number }> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('complete.slash', { text }, 10_000)
+}
+
+export interface SlashExecResult {
+  output?: string
+  warning?: string
+  type?: string
+  message?: string
+  display?: string
+}
+
+export async function execSlash(sessionId: string, command: string): Promise<SlashExecResult> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('slash.exec', { session_id: sessionId, command: command.replace(/^\/+/, '') }, 60_000)
 }
 
 export function getModelInfo(): Promise<ModelInfoResponse> {

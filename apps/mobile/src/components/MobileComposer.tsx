@@ -5,12 +5,15 @@ import { $connectionState, reconnectGateway } from '@/gateway'
 import * as api from '@/gateway/api'
 import {
   $activeRuntimeId,
+  $activeSessionId,
   $currentFast,
   $currentModel,
   $currentProvider,
   $currentReasoningEffort,
-  sendMessage
+  sendMessage,
+  sendSlashCommand
 } from '@/sessions/store'
+import { getDraft, setDraft } from '@/sessions/drafts'
 import type { ModelOptionProvider } from '@/types/hermes'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
@@ -111,6 +114,7 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   )
   const [isDictating, setIsDictating] = useState(false)
   const [dictationHint, setDictationHint] = useState<string | null>(null)
+  const [slashItems, setSlashItems] = useState<api.SlashCompletionItem[]>([])
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -121,7 +125,26 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   const reasoningEffort = useStore($currentReasoningEffort)
   const currentFast = useStore($currentFast)
   const connectionState = useStore($connectionState)
+  const activeSessionId = useStore($activeSessionId)
   const connected = connectionState === 'open'
+
+  /* Per-session draft restore (Desktop use-composer-draft.ts parity). */
+  useEffect(() => {
+    setText(activeSessionId ? getDraft(activeSessionId) : '')
+    setAttachments([])
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }, [activeSessionId])
+
+  useEffect(() => {
+    if (!activeSessionId) return
+
+    const timer = window.setTimeout(() => setDraft(activeSessionId, text), 300)
+
+    return () => window.clearTimeout(timer)
+  }, [text, activeSessionId])
 
   /* Model catalog comes from the gateway, like Desktop's model.options RPC. */
   useEffect(() => {
@@ -145,6 +168,30 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
     return () => { cancelled = true }
   }, [connected])
+
+  /* Slash completions — Desktop's complete.slash RPC, debounced. Only while
+   * typing the leading command token (no space yet). */
+  useEffect(() => {
+    const trimmed = text.trimStart()
+    const isSlashQuery = connected && !busy && trimmed.startsWith('/') && !trimmed.includes(' ') && trimmed.length <= 64
+
+    if (!isSlashQuery) {
+      setSlashItems([])
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      api.completeSlash(trimmed)
+        .then(result => { if (!cancelled) setSlashItems(result.items ?? []) })
+        .catch(() => { if (!cancelled) setSlashItems([]) })
+    }, 150)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [text, connected, busy])
 
   const activeModel = currentModelStore
   const activeProvider = currentProviderStore
@@ -176,7 +223,25 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   const handleSend = () => {
     if (!canSend) return
 
-    void sendMessage(text.trim(), {
+    const trimmed = text.trim()
+
+    if (activeSessionId) {
+      setDraft(activeSessionId, '')
+    }
+
+    if (trimmed.startsWith('/')) {
+      setSlashItems([])
+      void sendSlashCommand(trimmed)
+      setText('')
+
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+      }
+
+      return
+    }
+
+    void sendMessage(trimmed, {
       model: activeModel || undefined,
       provider: activeProvider || undefined,
       reasoningEffort: reasoningSupported ? reasoningEffort : undefined,
@@ -328,6 +393,33 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
                 <Codicon name="close" className="text-[0.65rem]" />
               </button>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Slash Command Completions */}
+      {slashItems.length > 0 && (
+        <div className="absolute bottom-full left-3 right-3 mb-1 max-h-[40vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) shadow-(--shadow-nous) p-1.5 z-50">
+          {slashItems.map(item => (
+            <button
+              key={item.text}
+              type="button"
+              onClick={() => {
+                setText(item.text.includes(' ') ? item.text : `${item.text} `)
+                setSlashItems([])
+                textareaRef.current?.focus()
+              }}
+              className="w-full flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-(--chrome-action-hover) active:bg-(--chrome-action-hover) transition-colors"
+            >
+              <span className="font-mono text-[0.7rem] text-(--ui-accent) font-medium truncate max-w-full">
+                {item.display ?? item.text}
+              </span>
+              {item.meta && (
+                <span className="text-[0.625rem] text-(--ui-text-tertiary) truncate max-w-full">
+                  {item.meta}
+                </span>
+              )}
+            </button>
           ))}
         </div>
       )}

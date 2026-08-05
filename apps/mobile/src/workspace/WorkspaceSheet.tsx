@@ -25,6 +25,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const [gitWorking, setGitWorking] = useState<string | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
   const [gitError, setGitError] = useState<string | null>(null)
+  const [diffView, setDiffView] = useState<{ path: string; diff: string } | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -111,6 +112,43 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
       await refreshGitStatus()
     } catch {
       setGitError(t.workspace.commitFailed)
+    } finally {
+      setGitWorking(null)
+    }
+  }
+
+  const push = async () => {
+    setGitWorking('push')
+    setGitError(null)
+    try {
+      await api.gitPush(currentPath)
+      await refreshGitStatus()
+    } catch {
+      setGitError(t.workspace.pushFailed)
+    } finally {
+      setGitWorking(null)
+    }
+  }
+
+  const openDiff = async (file: string) => {
+    setGitError(null)
+    try {
+      const result = await api.gitFileDiff(file, currentPath)
+      setDiffView({ path: result.path || file, diff: result.diff })
+    } catch {
+      setDiffView({ path: file, diff: '' })
+    }
+  }
+
+  const revertFile = async (file: string) => {
+    if (!window.confirm(t.workspace.revertConfirm(file))) return
+    setGitWorking(file)
+    setGitError(null)
+    try {
+      await api.gitRevert(file, currentPath)
+      await refreshGitStatus()
+    } catch {
+      setGitError(t.workspace.revertFailed(file))
     } finally {
       setGitWorking(null)
     }
@@ -207,13 +245,43 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
 
       {tab === 'changes' && (
         <div>
-          {!gitStatus && (
+          {diffView ? (
+            <div>
+              <button
+                className="text-(--conversation-caption-font-size) text-(--ui-accent) mb-2"
+                onClick={() => setDiffView(null)}
+              >
+                {t.workspace.back}
+              </button>
+              <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary) mb-2 font-mono truncate">
+                {diffView.path}
+              </p>
+              {diffView.diff ? (
+                <pre className="text-(--conversation-tool-font-size) font-mono bg-(--ui-widget-surface-background) rounded-lg p-3 overflow-x-auto whitespace-pre select-text max-h-[50vh] overflow-y-auto no-scrollbar">
+                  {diffView.diff.split('\n').map((line, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        line.startsWith('+') && !line.startsWith('+++') && 'text-(--ui-green)',
+                        line.startsWith('-') && !line.startsWith('---') && 'text-(--ui-red)',
+                        line.startsWith('@@') && 'text-(--ui-accent)'
+                      )}
+                    >
+                      {line || ' '}
+                    </div>
+                  ))}
+                </pre>
+              ) : (
+                <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">
+                  {t.workspace.diffEmpty}
+                </p>
+              )}
+            </div>
+          ) : !gitStatus ? (
             <p className="text-(--conversation-caption-font-size) text-(--ui-text-quaternary) py-4">
               {t.workspace.noRepo}
             </p>
-          )}
-
-          {gitStatus && (
+          ) : (
             <div className="space-y-3">
               <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">
                 {t.workspace.branch} <span className="font-mono text-(--ui-text-secondary)">{gitStatus.branch}</span>
@@ -222,21 +290,49 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
               {gitStatus.staged.length > 0 && (
                 <div>
                   <ChangeLabel label={t.workspace.staged} color="text-(--ui-green)" />
-                  {gitStatus.staged.map(f => <GitFileRow key={f} file={f} action={t.workspace.unstage} disabled={gitWorking !== null} onAction={() => void updateStage(f, true)} />)}
+                  {gitStatus.staged.map(f => (
+                    <GitFileRow
+                      key={f}
+                      file={f}
+                      action={t.workspace.unstage}
+                      disabled={gitWorking !== null}
+                      onAction={() => void updateStage(f, true)}
+                      onOpen={() => void openDiff(f)}
+                    />
+                  ))}
                 </div>
               )}
 
               {gitStatus.modified.length > 0 && (
                 <div>
                   <ChangeLabel label={t.workspace.modified} color="text-(--ui-yellow)" />
-                  {gitStatus.modified.map(f => <GitFileRow key={f} file={f} action={t.workspace.stage} disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
+                  {gitStatus.modified.map(f => (
+                    <GitFileRow
+                      key={f}
+                      file={f}
+                      action={t.workspace.stage}
+                      secondaryAction={t.workspace.revert}
+                      disabled={gitWorking !== null}
+                      onAction={() => void updateStage(f, false)}
+                      onSecondaryAction={() => void revertFile(f)}
+                      onOpen={() => void openDiff(f)}
+                    />
+                  ))}
                 </div>
               )}
 
               {gitStatus.untracked.length > 0 && (
                 <div>
                   <ChangeLabel label={t.workspace.untracked} color="text-(--ui-text-tertiary)" />
-                  {gitStatus.untracked.map(f => <GitFileRow key={f} file={f} action={t.workspace.stage} disabled={gitWorking !== null} onAction={() => void updateStage(f, false)} />)}
+                  {gitStatus.untracked.map(f => (
+                    <GitFileRow
+                      key={f}
+                      file={f}
+                      action={t.workspace.stage}
+                      disabled={gitWorking !== null}
+                      onAction={() => void updateStage(f, false)}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -246,6 +342,16 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
                   <div className="flex gap-2"><input value={commitMessage} onChange={event => setCommitMessage(event.target.value)} placeholder={t.workspace.commitPlaceholder} className="min-w-0 flex-1 rounded-md border border-(--ui-stroke-secondary) bg-(--ui-bg-card) px-2 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-primary) outline-none focus:border-(--ui-accent)" /><button disabled={!commitMessage.trim() || gitWorking !== null} onClick={() => void commit()} className="rounded-md bg-(--ui-accent) px-3 py-1.5 text-(--conversation-tool-font-size) text-white disabled:opacity-50">{t.workspace.commit}</button></div>
                 </div>
               )}
+
+              <div className="border-t border-(--ui-stroke-tertiary) pt-3">
+                <button
+                  disabled={gitWorking !== null}
+                  onClick={() => void push()}
+                  className="w-full rounded-md border border-(--ui-stroke-secondary) px-3 py-1.5 text-(--conversation-tool-font-size) text-(--ui-text-secondary) disabled:opacity-50 active:bg-(--ui-row-active-background)"
+                >
+                  {gitWorking === 'push' ? t.common.loading : t.workspace.push}
+                </button>
+              </div>
 
               {gitError && <p className="text-(--conversation-tool-font-size) text-(--ui-red)">{gitError}</p>}
 
@@ -264,8 +370,46 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   )
 }
 
-function GitFileRow({ file, action, disabled, onAction }: { file: string; action: string; disabled: boolean; onAction: () => void }) {
-  return <div className="flex items-center gap-2 py-1"><p className="min-w-0 flex-1 truncate font-mono text-(--conversation-tool-font-size) text-(--ui-text-secondary)">{file}</p><button disabled={disabled} onClick={onAction} className="shrink-0 text-(--conversation-tool-font-size) text-(--ui-accent) disabled:opacity-50">{action}</button></div>
+function GitFileRow({
+  file,
+  action,
+  secondaryAction,
+  disabled,
+  onAction,
+  onSecondaryAction,
+  onOpen
+}: {
+  file: string
+  action: string
+  secondaryAction?: string
+  disabled: boolean
+  onAction: () => void
+  onSecondaryAction?: () => void
+  onOpen?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <button
+        className="min-w-0 flex-1 truncate text-left font-mono text-(--conversation-tool-font-size) text-(--ui-text-secondary) active:opacity-70"
+        onClick={onOpen}
+        disabled={!onOpen}
+      >
+        {file}
+      </button>
+      {secondaryAction && onSecondaryAction && (
+        <button
+          disabled={disabled}
+          onClick={onSecondaryAction}
+          className="shrink-0 text-(--conversation-tool-font-size) text-(--ui-red) disabled:opacity-50"
+        >
+          {secondaryAction}
+        </button>
+      )}
+      <button disabled={disabled} onClick={onAction} className="shrink-0 text-(--conversation-tool-font-size) text-(--ui-accent) disabled:opacity-50">
+        {action}
+      </button>
+    </div>
+  )
 }
 
 function ChangeLabel({ label, color }: { label: string; color: string }) {

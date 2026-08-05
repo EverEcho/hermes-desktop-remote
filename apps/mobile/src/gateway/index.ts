@@ -14,15 +14,18 @@ export {
   $pendingApprovals,
   $pendingClarifications,
   $pendingSecrets,
+  $pendingSudo,
   $terminalOutputs,
   onGatewayEvent,
   resolveApproval,
   resolveClarification,
   resolveSecret,
+  resolveSudo,
   startEventRouter,
   stopEventRouter,
   type ApprovalRequest,
   type ClarifyRequest,
   type SecretRequest,
+  type SudoRequest,
   type TerminalOutput
 } from './event-router'

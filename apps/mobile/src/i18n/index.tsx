@@ -43,5 +43,9 @@ export function useI18n(): I18nContextValue {
   return useContext(I18nContext)
 }
 
+export function translateNow(): Catalog {
+  return CATALOGS[detectLocale()] ?? en
+}
+
 export { LOCALE_OPTIONS }
 export type { Catalog }

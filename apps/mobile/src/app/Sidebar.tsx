@@ -1,9 +1,12 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useStore } from '@nanostores/react'
 import type { SessionInfo } from '@/types/hermes'
 import { ActionSheet, type ActionSheetAction } from '@/ui/ActionSheet'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import * as api from '@/gateway/api'
+import { $activeSessionId, $sessionTitle } from '@/sessions/store'
+import { $sessionStates } from '@/sessions/session-states'
 import { useI18n } from '@/i18n'
 
 export interface SidebarProps {
@@ -60,6 +63,22 @@ export function Sidebar(props: SidebarProps) {
             props.onRefresh()
           } catch { /* best effort */ }
           break
+        case 'rename': {
+          const next = window.prompt(t.sidebar.renamePrompt, actionTarget.title ?? '')
+
+          if (next !== null && next.trim() && next.trim() !== actionTarget.title) {
+            try {
+              await api.renameSession(id, next.trim())
+
+              if ($activeSessionId.get() === (actionTarget._lineage_root_id ?? actionTarget.id)) {
+                $sessionTitle.set(next.trim())
+              }
+
+              props.onRefresh()
+            } catch { /* best effort */ }
+          }
+          break
+        }
         case 'archive':
           try {
             await api.setSessionArchived(id, true)
@@ -91,6 +110,7 @@ export function Sidebar(props: SidebarProps) {
   const actions: ActionSheetAction[] = actionTarget
     ? [
         { id: 'pin', label: actionTarget.pinned ? t.sidebar.unpin : t.sidebar.pin },
+        { id: 'rename', label: t.sidebar.rename },
         { id: 'archive', label: t.sidebar.archive },
         { id: 'delete', label: t.sidebar.deleteSession, destructive: true }
       ]
@@ -284,8 +304,12 @@ function SessionItem({
   nested?: boolean
 }) {
   const { t } = useI18n()
+  const sessionStates = useStore($sessionStates)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
+
+  const storedId = session._lineage_root_id ?? session.id
+  const dotState = sessionStates.get(storedId) ?? sessionStates.get(session.id) ?? null
 
   const handleTouchStart = () => {
     didLongPress.current = false
@@ -326,9 +350,18 @@ function SessionItem({
     >
       <div className="flex items-center justify-between gap-1">
         <span className="truncate flex-1">
-          <span className={cn('mr-1 text-(--ui-text-quaternary)', session.is_active && 'text-(--ui-accent)')}>
-            •
-          </span>
+          <span
+            className={cn(
+              'mr-1 inline-block size-1.5 rounded-full align-middle',
+              dotState === 'needs-input'
+                ? 'bg-amber-500'
+                : dotState === 'working'
+                ? 'bg-(--ui-accent) animate-pulse'
+                : session.is_active
+                ? 'bg-(--ui-accent)'
+                : 'bg-(--ui-text-quaternary)'
+            )}
+          />
           {session.title || session.preview || t.sidebar.untitled}
         </span>
         <span className="shrink-0 text-[0.6rem] text-(--ui-text-quaternary)">

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
+import { onGatewayEvent } from '@/gateway'
 import type { CronJob } from '@/types/hermes'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
@@ -18,11 +19,7 @@ export function CronPage({ open, onClose }: CronPageProps) {
   const [editor, setEditor] = useState<CronJob | 'new' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!open) {
-      return
-    }
-
+  const loadJobs = useCallback(() => {
     setLoading(true)
     setError(null)
     api
@@ -30,7 +27,28 @@ export function CronPage({ open, onClose }: CronPageProps) {
       .then(setJobs)
       .catch(() => setError(t.cron.loadFailed))
       .finally(() => setLoading(false))
-  }, [open])
+  }, [t])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    loadJobs()
+  }, [open, loadJobs])
+
+  /* Live refresh while open (Desktop cron.changed parity). */
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    return onGatewayEvent(event => {
+      if (event.type === 'cron.changed') {
+        loadJobs()
+      }
+    })
+  }, [open, loadJobs])
 
   const toggleJob = async (job: CronJob) => {
     try {

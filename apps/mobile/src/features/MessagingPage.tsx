@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
+import { onGatewayEvent } from '@/gateway'
 import type { MessagingPlatformInfo, PairingResponse } from '@/types/hermes'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
@@ -18,7 +19,7 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -38,13 +39,26 @@ export function MessagingPage({ open, onClose }: MessagingPageProps) {
     }
 
     setLoading(false)
-  }
+  }, [t])
 
   useEffect(() => {
     if (open) {
       void refresh()
     }
-  }, [open])
+  }, [open, refresh])
+
+  /* Live refresh while open (Desktop platforms.changed / pairing.changed parity). */
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    return onGatewayEvent(event => {
+      if (event.type === 'platforms.changed' || event.type === 'pairing.changed') {
+        void refresh()
+      }
+    })
+  }, [open, refresh])
 
   const approveUser = async (platform: string, requestId: string) => {
     await api.approvePairing(platform, requestId)

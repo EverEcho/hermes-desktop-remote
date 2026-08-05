@@ -5,6 +5,8 @@ import { $authState, initializeAuth } from '@/auth'
 import { configureHttpClient } from '@/gateway/http-client'
 import { connectGateway, disconnectGateway, startEventRouter, stopEventRouter } from '@/gateway'
 import { loadSessionToken } from '@/auth/token-store'
+import { ensureNotificationPermission, wireEventNotifications } from '@/notifications'
+import { clearSessionDots } from '@/sessions/session-states'
 import { LoginScreen } from '@/app/LoginScreen'
 import { AppShell } from '@/app/AppShell'
 import { I18nProvider, useI18n } from '@/i18n'
@@ -30,6 +32,7 @@ function AppRoot() {
     if (authState.status !== 'authenticated') {
       disconnectGateway()
       stopEventRouter()
+      clearSessionDots()
 
       return
     }
@@ -55,6 +58,8 @@ function AppRoot() {
 
       if (!cancelled) {
         startEventRouter()
+        wireEventNotifications()
+        void ensureNotificationPermission()
       }
     })()
 

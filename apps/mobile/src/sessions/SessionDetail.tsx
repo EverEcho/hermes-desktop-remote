@@ -5,6 +5,7 @@ import {
   $messages,
   $busy,
   $awaitingResponse,
+  editAndResend,
   retryMessage,
   stopGeneration
 } from './store'
@@ -13,6 +14,8 @@ import { MobileComposer } from '@/components/MobileComposer'
 import { cn } from '@/ui/utils'
 import { MarkdownContent } from '@/components/MarkdownContent'
 import { Codicon } from '@/ui/Codicon'
+import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
+import { Button } from '@/ui/Button'
 import { useI18n, type Catalog } from '@/i18n'
 
 interface SessionDetailProps {
@@ -26,6 +29,7 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
   const awaitingResponse = useStore($awaitingResponse)
   const scrollRef = useRef<HTMLDivElement>(null)
   const userScrolledUp = useRef(false)
+  const [editingMessage, setEditingMessage] = useState<MobileMessage | null>(null)
 
   useEffect(() => {
     if (!userScrolledUp.current && scrollRef.current) {
@@ -60,7 +64,11 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
         )}
 
         {messages.map(msg => (
-          <MessageRow key={msg.id} message={msg} />
+          <MessageRow
+            key={msg.id}
+            message={msg}
+            onEditUser={msg.role === 'user' ? () => setEditingMessage(msg) : undefined}
+          />
         ))}
 
         {awaitingResponse && (
@@ -84,11 +92,44 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
       )}
 
       <MobileComposer busy={busy} onStop={() => void stopGeneration()} />
+
+      {editingMessage && (
+        <EditMessageSheet message={editingMessage} onClose={() => setEditingMessage(null)} />
+      )}
     </div>
   )
 }
 
-function MessageRow({ message }: { message: MobileMessage }) {
+function EditMessageSheet({ message, onClose }: { message: MobileMessage; onClose: () => void }) {
+  const { t } = useI18n()
+  const [text, setText] = useState(() => message.parts?.find(p => p.type === 'text')?.text ?? '')
+
+  return (
+    <ResponsiveSheet open onClose={onClose} title={t.session.editMessage}>
+      <div className="space-y-3">
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          rows={4}
+          autoFocus
+          className="w-full resize-none rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-2.5 text-xs leading-relaxed text-(--ui-text-primary) focus:outline-none focus:border-(--ui-accent)"
+        />
+        <Button
+          className="w-full"
+          disabled={!text.trim()}
+          onClick={() => {
+            void editAndResend(message.id, text)
+            onClose()
+          }}
+        >
+          {t.session.saveAndSend}
+        </Button>
+      </div>
+    </ResponsiveSheet>
+  )
+}
+
+function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUser?: () => void }) {
   const { t } = useI18n()
 
   if (message.role === 'system') {
@@ -112,7 +153,7 @@ function MessageRow({ message }: { message: MobileMessage }) {
       <div className="sticky top-0 z-10 bg-(--ui-bg-chrome) py-1.5 w-full">
         <div
           className={cn(
-            'w-full rounded-xl border bg-(--ui-bg-card) p-3 text-left shadow-xs transition-colors',
+            'relative w-full rounded-xl border bg-(--ui-bg-card) p-3 text-left shadow-xs transition-colors',
             message.failed ? 'border-(--ui-red)' : 'border-(--ui-stroke-tertiary)'
           )}
         >
@@ -120,6 +161,16 @@ function MessageRow({ message }: { message: MobileMessage }) {
             content={textPart}
             className="text-(--conversation-text-font-size) leading-[var(--conversation-line-height)] text-(--ui-text-primary)"
           />
+          {onEditUser && (
+            <button
+              type="button"
+              onClick={onEditUser}
+              title={t.session.editMessage}
+              className="absolute top-1.5 right-1.5 p-1 rounded-md text-(--ui-text-quaternary) hover:text-(--ui-text-primary) active:scale-95 transition-all"
+            >
+              <Codicon name="edit" className="text-xs" />
+            </button>
+          )}
         </div>
       </div>
     )
