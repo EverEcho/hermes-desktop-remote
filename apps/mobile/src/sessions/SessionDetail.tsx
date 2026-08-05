@@ -63,12 +63,16 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
           </div>
         )}
 
-        {messages.map(msg => (
-          <MessageRow
-            key={msg.id}
-            message={msg}
-            onEditUser={msg.role === 'user' ? () => setEditingMessage(msg) : undefined}
-          />
+        {groupMessagesByTurn(messages).map(group => (
+          <div key={group[0].id} className="flex min-w-0 flex-col gap-4">
+            {group.map(msg => (
+              <MessageRow
+                key={msg.id}
+                message={msg}
+                onEditUser={msg.role === 'user' ? () => setEditingMessage(msg) : undefined}
+              />
+            ))}
+          </div>
         ))}
 
         {awaitingResponse && (
@@ -98,6 +102,28 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
       )}
     </div>
   )
+}
+
+/* Port of Desktop thread/list.tsx buildGroups: group each user message with
+ * the assistant turns that follow it so the sticky human bubble pins against
+ * the scroller only across its OWN turn — the next turn's wrapper bottom edge
+ * pushes the parked bubble up instead of the next user bubble overlapping it. */
+function groupMessagesByTurn(messages: MobileMessage[]): MobileMessage[][] {
+  const groups: MobileMessage[][] = []
+  let current: MobileMessage[] | null = null
+
+  for (const message of messages) {
+    if (message.role === 'user') {
+      current = [message]
+      groups.push(current)
+    } else if (current) {
+      current.push(message)
+    } else {
+      groups.push([message])
+    }
+  }
+
+  return groups
 }
 
 function EditMessageSheet({ message, onClose }: { message: MobileMessage; onClose: () => void }) {

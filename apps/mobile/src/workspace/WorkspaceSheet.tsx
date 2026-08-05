@@ -14,6 +14,17 @@ interface WorkspaceSheetProps {
 
 type Tab = 'files' | 'changes'
 
+/* Older/remote backends can omit the list fields entirely — coerce at the
+ * boundary so the render never reads `.length` off undefined. */
+function normalizeGitStatus(status: GitStatusResponse): GitStatusResponse {
+  return {
+    branch: status.branch ?? '',
+    modified: status.modified ?? [],
+    staged: status.staged ?? [],
+    untracked: status.untracked ?? []
+  }
+}
+
 export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState<Tab>('files')
@@ -45,13 +56,13 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
     setLoading(true)
     api
       .fsList(currentPath)
-      .then(result => setEntries(result.entries))
+      .then(result => setEntries(result.entries ?? []))
       .catch(() => setEntries([]))
       .finally(() => setLoading(false))
 
     api
       .gitStatus(currentPath)
-      .then(setGitStatus)
+      .then(status => setGitStatus(normalizeGitStatus(status)))
       .catch(() => setGitStatus(null))
   }, [open, currentPath])
 
@@ -79,7 +90,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
 
   const refreshGitStatus = async () => {
     try {
-      setGitStatus(await api.gitStatus(currentPath))
+      setGitStatus(normalizeGitStatus(await api.gitStatus(currentPath)))
     } catch {
       setGitStatus(null)
     }

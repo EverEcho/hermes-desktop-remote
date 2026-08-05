@@ -1,4 +1,5 @@
 import { App } from '@capacitor/app'
+import { Browser } from '@capacitor/browser'
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics'
 import { Keyboard } from '@capacitor/keyboard'
 import { Network } from '@capacitor/network'
@@ -7,6 +8,21 @@ import { Capacitor } from '@capacitor/core'
 
 export function isNativePlatform(): boolean {
   return Capacitor.isNativePlatform()
+}
+
+/* External links open in a popup browser (Capacitor in-app browser sheet on
+ * native, new tab on H5) instead of redirecting the app's own webview. */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isNativePlatform()) {
+    try {
+      await Browser.open({ url })
+      return
+    } catch {
+      // fall through to window.open
+    }
+  }
+
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 export async function initializeNativeAdapters(): Promise<void> {
