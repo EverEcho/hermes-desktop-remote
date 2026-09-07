@@ -1,0 +1,634 @@
+import type {
+  AuxiliaryModelsResponse,
+  ConfigSchemaResponse,
+  CronDeliveryTarget,
+  CronJob,
+  CronJobCreatePayload,
+  CronJobUpdates,
+  CustomEndpointUpdate,
+  CustomEndpointsResponse,
+  EnvVarInfo,
+  FsListResponse,
+  GitFileDiffResponse,
+  GitStatusResponse,
+  HermesConfig,
+  HermesConfigRecord,
+  MessagingPlatformUpdate,
+  MessagingPlatformsResponse,
+  ModelAssignmentRequest,
+  ModelAssignmentResponse,
+  ModelInfoResponse,
+  ModelOptionsResponse,
+  MoaConfigResponse,
+  OAuthPollResponse,
+  OAuthProvidersResponse,
+  OAuthStartResponse,
+  PaginatedSessions,
+  PairingResponse,
+  ProfilesResponse,
+  RecommendedDefaultModel,
+  SessionCreateResponse,
+  SessionInfo,
+  SessionMessagesResponse,
+  SessionResumeResponse,
+  SessionSearchResponse,
+  SkillInfo,
+  StatusResponse,
+  ToolsetInfo
+} from '@/types/hermes'
+import { apiRequest, getActiveProfile } from './http-client'
+import { getGateway } from './ws-client'
+
+const SESSION_LIST_TIMEOUT_MS = 60_000
+const STARTUP_TIMEOUT_MS = 60_000
+const CRON_TRIGGER_TIMEOUT_MS = 24 * 60 * 60 * 1000
+const MOBILE_SESSION_SOURCE = 'mobile'
+
+function activeProfileBody(fields: Record<string, unknown>): Record<string, unknown> {
+  const profile = getActiveProfile()
+  return profile && profile !== 'default' ? { ...fields, profile } : fields
+}
+
+export function getStatus(): Promise<StatusResponse> {
+  return apiRequest<StatusResponse>('/api/status')
+}
+
+export function listSessions(
+  limit = 40,
+  archived: 'exclude' | 'include' | 'only' = 'exclude',
+  order: 'created' | 'recent' = 'recent'
+): Promise<PaginatedSessions> {
+  const params = new URLSearchParams({
+    limit: String(Math.max(1, limit)),
+    offset: '0',
+    min_messages: '1',
+    archived,
+    order
+  })
+
+  return apiRequest<PaginatedSessions>(
+    `/api/sessions?${params.toString()}`,
+    { timeoutMs: SESSION_LIST_TIMEOUT_MS }
+  )
+}
+
+export function getSession(id: string): Promise<SessionInfo> {
+  return apiRequest<SessionInfo>(`/api/sessions/${encodeURIComponent(id)}`)
+}
+
+export function getSessionMessages(
+  id: string,
+  options: { limit?: number; offset?: number; order?: 'latest' | 'oldest'; includeCompacted?: boolean } = {}
+): Promise<SessionMessagesResponse> {
+  const params = new URLSearchParams()
+
+  if (options.limit !== undefined) params.set('limit', String(Math.max(1, options.limit)))
+  if (options.offset !== undefined) params.set('offset', String(Math.max(0, options.offset)))
+  if (options.order) params.set('order', options.order)
+  if (options.includeCompacted !== undefined) params.set('include_compacted', String(options.includeCompacted))
+
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+
+  return apiRequest<SessionMessagesResponse>(`/api/sessions/${encodeURIComponent(id)}/messages${suffix}`)
+}
+
+export function searchSessions(query: string): Promise<SessionSearchResponse> {
+  return apiRequest<SessionSearchResponse>(
+    `/api/sessions/search?q=${encodeURIComponent(query)}`
+  )
+}
+
+export function setSessionArchived(id: string, archived: boolean): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: activeProfileBody({ archived })
+  })
+}
+
+export function setSessionPinned(id: string, pinned: boolean): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: activeProfileBody({ pinned })
+  })
+}
+
+export function setSessionUnread(id: string, unread: boolean): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: activeProfileBody({ unread })
+  })
+}
+
+export function renameSession(id: string, title: string): Promise<{ ok: boolean; title: string }> {
+  return apiRequest<{ ok: boolean; title: string }>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: activeProfileBody({ title })
+  })
+}
+
+export function deleteSession(id: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+}
+
+export async function resumeSession(
+  storedSessionId: string,
+  options?: { omitMessages?: boolean }
+): Promise<SessionResumeResponse> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request<SessionResumeResponse>('session.resume', {
+    session_id: storedSessionId,
+    source: MOBILE_SESSION_SOURCE,
+    ...(options?.omitMessages ? { omit_messages: true } : {})
+  })
+}
+
+export interface CreateSessionOptions {
+  cwd?: string
+  model?: string
+  provider?: string
+  reasoningEffort?: string
+  fast?: boolean
+}
+
+export async function createSession(options?: CreateSessionOptions): Promise<SessionCreateResponse> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  const params: Record<string, unknown> = {}
+
+  if (options?.cwd) {
+    params.cwd = options.cwd
+  }
+
+  /* Sticky composer selection rides on session.create, like Desktop. */
+  if (options?.model) {
+    params.model = options.model
+  }
+
+  if (options?.provider) {
+    params.provider = options.provider
+  }
+
+  if (options?.reasoningEffort) {
+    params.reasoning_effort = options.reasoningEffort
+  }
+
+  if (options?.fast) {
+    params.fast = true
+  }
+
+  params.source = MOBILE_SESSION_SOURCE
+
+  return gateway.request<SessionCreateResponse>('session.create', params)
+}
+
+/** Live fast-mode switch — same mechanism as Desktop's model-edit-submenu. */
+export async function setSessionFast(sessionId: string, fast: boolean): Promise<unknown> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('config.set', {
+    key: 'fast',
+    session_id: sessionId,
+    value: fast ? 'fast' : 'normal'
+  })
+}
+
+export async function submitPrompt(
+  sessionId: string,
+  text: string,
+  options?: {
+    model?: string
+    provider?: string
+    reasoningEffort?: string
+    attachments?: Array<{ data_url: string; filename: string }>
+    truncateBeforeUserOrdinal?: number
+  }
+): Promise<unknown> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  const params: Record<string, unknown> = {
+    session_id: sessionId,
+    text
+  }
+
+  if (options?.model) {
+    params.model = options.model
+  }
+
+  if (options?.provider) {
+    params.provider = options.provider
+  }
+
+  if (options?.reasoningEffort) {
+    params.reasoning_effort = options.reasoningEffort
+  }
+
+  if (options?.attachments?.length) {
+    params.attachments = options.attachments
+  }
+
+  if (options?.truncateBeforeUserOrdinal !== undefined) {
+    params.truncate_before_user_ordinal = options.truncateBeforeUserOrdinal
+
+    if (options.truncateBeforeUserOrdinal === 0) {
+      params.confirm_empty_truncate = true
+    }
+  }
+
+  return gateway.request('prompt.submit', params, 1_800_000)
+}
+
+export async function interruptSession(sessionId: string): Promise<unknown> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('session.interrupt', { session_id: sessionId })
+}
+
+export interface SlashCompletionItem {
+  text: string
+  display?: string
+  meta?: string
+}
+
+export async function completeSlash(text: string): Promise<{ items?: SlashCompletionItem[]; replace_from?: number }> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('complete.slash', { text }, 10_000)
+}
+
+export interface SlashExecResult {
+  output?: string
+  warning?: string
+  type?: string
+  message?: string
+  display?: string
+}
+
+export async function execSlash(sessionId: string, command: string): Promise<SlashExecResult> {
+  const gateway = getGateway()
+
+  if (!gateway) {
+    throw new Error('Gateway not connected')
+  }
+
+  return gateway.request('slash.exec', { session_id: sessionId, command: command.replace(/^\/+/, '') }, 60_000)
+}
+
+export function getModelInfo(): Promise<ModelInfoResponse> {
+  return apiRequest<ModelInfoResponse>('/api/model/info', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getModelOptions(options: { refresh?: boolean; includeUnconfigured?: boolean; explicitOnly?: boolean } = {}): Promise<ModelOptionsResponse> {
+  const params = new URLSearchParams()
+  if (options.refresh) params.set('refresh', '1')
+  if (options.includeUnconfigured) params.set('include_unconfigured', '1')
+  if (options.explicitOnly !== false) params.set('explicit_only', '1')
+
+  return apiRequest<ModelOptionsResponse>(`/api/model/options?${params.toString()}`, {
+    timeoutMs: STARTUP_TIMEOUT_MS
+  })
+}
+
+export function setGlobalModel(provider: string, model: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/model/set', {
+    method: 'POST',
+    body: { scope: 'main', provider, model }
+  })
+}
+
+export function getProfiles(): Promise<ProfilesResponse> {
+  return apiRequest<ProfilesResponse>('/api/profiles', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getConfig(): Promise<HermesConfig> {
+  return apiRequest<HermesConfig>('/api/config', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getConfigRecord(): Promise<HermesConfigRecord> {
+  return apiRequest<HermesConfigRecord>('/api/config')
+}
+
+export function getConfigDefaults(): Promise<HermesConfigRecord> {
+  return apiRequest<HermesConfigRecord>('/api/config/defaults', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export function getConfigSchema(): Promise<ConfigSchemaResponse> {
+  return apiRequest<ConfigSchemaResponse>('/api/config/schema')
+}
+
+export function saveConfig(config: HermesConfigRecord): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/config', { method: 'PUT', body: { config } })
+}
+
+export function getAuxiliaryModels(): Promise<AuxiliaryModelsResponse> {
+  return apiRequest<AuxiliaryModelsResponse>('/api/model/auxiliary')
+}
+
+export function setModelAssignment(body: ModelAssignmentRequest): Promise<ModelAssignmentResponse> {
+  return apiRequest<ModelAssignmentResponse>('/api/model/set', { method: 'POST', body })
+}
+
+export function getMoaModels(): Promise<MoaConfigResponse> {
+  return apiRequest<MoaConfigResponse>('/api/model/moa')
+}
+
+export function saveMoaModels(body: MoaConfigResponse): Promise<MoaConfigResponse & { ok: boolean }> {
+  return apiRequest<MoaConfigResponse & { ok: boolean }>('/api/model/moa', { method: 'PUT', body })
+}
+
+export function getRecommendedDefaultModel(provider: string): Promise<RecommendedDefaultModel> {
+  return apiRequest<RecommendedDefaultModel>(`/api/model/recommended-default?provider=${encodeURIComponent(provider)}`)
+}
+
+export function getEnvVars(): Promise<Record<string, EnvVarInfo>> {
+  return apiRequest<Record<string, EnvVarInfo>>('/api/env')
+}
+
+export function setEnvVar(key: string, value: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/env', { method: 'PUT', body: { key, value } })
+}
+
+export function deleteEnvVar(key: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/env', { method: 'DELETE', body: { key } })
+}
+
+export function revealEnvVar(key: string): Promise<{ key: string; value: string }> {
+  return apiRequest<{ key: string; value: string }>('/api/env/reveal', { method: 'POST', body: { key } })
+}
+
+export function getCustomEndpoints(): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>('/api/providers/custom-endpoints')
+}
+
+export function saveCustomEndpoint(endpoint: CustomEndpointUpdate): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>('/api/providers/custom-endpoints', { method: 'POST', body: endpoint })
+}
+
+export function activateCustomEndpoint(id: string): Promise<{ ok: boolean; provider: string; model: string }> {
+  return apiRequest<{ ok: boolean; provider: string; model: string }>(
+    `/api/providers/custom-endpoints/${encodeURIComponent(id)}/activate`,
+    { method: 'POST' }
+  )
+}
+
+export function deleteCustomEndpoint(id: string): Promise<CustomEndpointsResponse> {
+  return apiRequest<CustomEndpointsResponse>(`/api/providers/custom-endpoints/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function listOAuthProviders(): Promise<OAuthProvidersResponse> {
+  return apiRequest<OAuthProvidersResponse>('/api/providers/oauth')
+}
+
+export function disconnectOAuthProvider(providerId: string): Promise<{ ok: boolean; provider: string }> {
+  return apiRequest<{ ok: boolean; provider: string }>(`/api/providers/oauth/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function startOAuthLogin(providerId: string): Promise<OAuthStartResponse> {
+  return apiRequest<OAuthStartResponse>(`/api/providers/oauth/${encodeURIComponent(providerId)}/start`, {
+    method: 'POST'
+  })
+}
+
+export function pollOAuth(providerId: string, sessionId: string): Promise<OAuthPollResponse> {
+  return apiRequest<OAuthPollResponse>(
+    `/api/providers/oauth/${encodeURIComponent(providerId)}/poll/${encodeURIComponent(sessionId)}`
+  )
+}
+
+export function getToolsets(): Promise<ToolsetInfo[]> {
+  return apiRequest<ToolsetInfo[]>('/api/tools/toolsets')
+}
+
+export function setMcpServerEnabled(name: string, enabled: boolean): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/mcp/servers/${encodeURIComponent(name)}/enabled`, {
+    method: 'PUT',
+    body: { enabled }
+  })
+}
+
+export function installMcpCatalogEntry(name: string, env: Record<string, string> = {}): Promise<{ ok: boolean; name?: string }> {
+  return apiRequest<{ ok: boolean; name?: string }>('/api/mcp/catalog/install', {
+    method: 'POST',
+    body: { name, env, enable: true },
+    timeoutMs: STARTUP_TIMEOUT_MS
+  })
+}
+
+export function authMcpServer(name: string): Promise<{ flow_id: string; authorization_url: string | null; status: string }> {
+  return apiRequest<{ flow_id: string; authorization_url: string | null; status: string }>(`/api/mcp/servers/${encodeURIComponent(name)}/auth`, {
+    method: 'POST',
+    timeoutMs: STARTUP_TIMEOUT_MS
+  })
+}
+
+export function getMcpOAuthFlow(flowId: string): Promise<{ flow_id: string; status: string; error?: string | null }> {
+  return apiRequest<{ flow_id: string; status: string; error?: string | null }>(`/api/mcp/oauth/flows/${encodeURIComponent(flowId)}`)
+}
+
+export function setToolsetEnabled(name: string, enabled: boolean): Promise<{ ok: boolean; name: string; enabled: boolean }> {
+  return apiRequest<{ ok: boolean; name: string; enabled: boolean }>(
+    `/api/tools/toolsets/${encodeURIComponent(name)}`,
+    { method: 'PUT', body: { enabled } }
+  )
+}
+
+export function restartGateway(): Promise<{ ok: boolean; message?: string }> {
+  return apiRequest<{ ok: boolean; message?: string }>('/api/gateway/restart', { method: 'POST' })
+}
+
+export function getSkills(): Promise<SkillInfo[]> {
+  return apiRequest<SkillInfo[]>('/api/skills')
+}
+
+export function setSkillEnabled(name: string, enabled: boolean): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/skills/toggle', {
+    method: 'PUT',
+    body: { name, enabled }
+  })
+}
+
+export function getCronJobs(): Promise<CronJob[]> {
+  return apiRequest<CronJob[]>('/api/cron/jobs', { timeoutMs: STARTUP_TIMEOUT_MS })
+}
+
+export async function getCronDeliveryTargets(): Promise<CronDeliveryTarget[]> {
+  const result = await apiRequest<{ targets?: CronDeliveryTarget[] }>('/api/cron/delivery-targets', {
+    timeoutMs: STARTUP_TIMEOUT_MS
+  })
+  return result.targets ?? []
+}
+
+export function createCronJob(body: CronJobCreatePayload): Promise<CronJob> {
+  return apiRequest<CronJob>('/api/cron/jobs', { method: 'POST', body })
+}
+
+export function updateCronJob(jobId: string, updates: CronJobUpdates): Promise<CronJob> {
+  return apiRequest<CronJob>(`/api/cron/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'PUT',
+    body: { updates }
+  })
+}
+
+export function pauseCronJob(jobId: string): Promise<CronJob> {
+  return apiRequest<CronJob>(`/api/cron/jobs/${encodeURIComponent(jobId)}/pause`, {
+    method: 'POST'
+  })
+}
+
+export function resumeCronJob(jobId: string): Promise<CronJob> {
+  return apiRequest<CronJob>(`/api/cron/jobs/${encodeURIComponent(jobId)}/resume`, {
+    method: 'POST'
+  })
+}
+
+export function triggerCronJob(jobId: string): Promise<CronJob> {
+  return apiRequest<CronJob>(`/api/cron/jobs/${encodeURIComponent(jobId)}/trigger`, {
+    method: 'POST',
+    timeoutMs: CRON_TRIGGER_TIMEOUT_MS
+  })
+}
+
+export function deleteCronJob(jobId: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>(`/api/cron/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE'
+  })
+}
+
+export function getPairing(): Promise<PairingResponse> {
+  return apiRequest<PairingResponse>('/api/pairing')
+}
+
+export function getMessagingPlatforms(): Promise<MessagingPlatformsResponse> {
+  return apiRequest<MessagingPlatformsResponse>('/api/messaging/platforms')
+}
+
+export function updateMessagingPlatform(
+  platformId: string,
+  body: MessagingPlatformUpdate
+): Promise<{ ok: boolean; platform: string }> {
+  return apiRequest<{ ok: boolean; platform: string }>(
+    `/api/messaging/platforms/${encodeURIComponent(platformId)}`,
+    { method: 'PUT', body }
+  )
+}
+
+export function testMessagingPlatform(platformId: string): Promise<{ ok: boolean; message: string; state?: string | null }> {
+  return apiRequest<{ ok: boolean; message: string; state?: string | null }>(
+    `/api/messaging/platforms/${encodeURIComponent(platformId)}/test`,
+    { method: 'POST' }
+  )
+}
+
+export function approvePairing(platform: string, requestId: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/pairing/approve', {
+    method: 'POST',
+    body: { platform, request_id: requestId }
+  })
+}
+
+export function revokePairing(platform: string, userId: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/pairing/revoke', {
+    method: 'POST',
+    body: { platform, user_id: userId }
+  })
+}
+
+export function fsList(dirPath: string): Promise<FsListResponse> {
+  return apiRequest<FsListResponse>(`/api/fs/list?path=${encodeURIComponent(dirPath)}`)
+}
+
+export function fsReadText(filePath: string): Promise<{ content: string }> {
+  return apiRequest<{ content: string }>(`/api/fs/read-text?path=${encodeURIComponent(filePath)}`)
+}
+
+export function fsWriteText(filePath: string, content: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/fs/write-text', {
+    method: 'POST',
+    body: { path: filePath, content }
+  })
+}
+
+export function gitStatus(repoPath?: string): Promise<GitStatusResponse> {
+  const suffix = repoPath ? `?path=${encodeURIComponent(repoPath)}` : ''
+
+  return apiRequest<GitStatusResponse>(`/api/git/status${suffix}`)
+}
+
+export function gitFileDiff(filePath: string, repoPath: string): Promise<GitFileDiffResponse> {
+  const params = new URLSearchParams({ file: filePath, path: repoPath })
+
+  return apiRequest<GitFileDiffResponse>(`/api/git/file-diff?${params.toString()}`)
+}
+
+export function gitStage(filePath: string | null, repoPath: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/git/review/stage', {
+    method: 'POST',
+    body: { file: filePath, path: repoPath }
+  })
+}
+
+export function gitUnstage(filePath: string | null, repoPath: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/git/review/unstage', {
+    method: 'POST',
+    body: { file: filePath, path: repoPath }
+  })
+}
+
+export function gitCommit(message: string, repoPath: string, push = false): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/git/review/commit', {
+    method: 'POST',
+    body: { message, path: repoPath, push }
+  })
+}
+
+export function gitPush(repoPath: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/git/review/push', {
+    method: 'POST',
+    body: { path: repoPath }
+  })
+}
+
+export function gitRevert(filePath: string | null, repoPath: string): Promise<{ ok: boolean }> {
+  return apiRequest<{ ok: boolean }>('/api/git/review/revert', {
+    method: 'POST',
+    body: { file: filePath, path: repoPath }
+  })
+}
+
+export function transcribeAudio(dataUrl: string): Promise<{ ok: boolean; transcript: string }> {
+  return apiRequest<{ ok: boolean; transcript: string }>('/api/audio/transcribe', {
+    method: 'POST',
+    body: { data_url: dataUrl },
+    timeoutMs: 180_000
+  })
+}

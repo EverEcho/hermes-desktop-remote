@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RHermes</string>
+    <string name="title_activity_main">RHermes</string>
+    <string name="package_name">cn.bit13.rhermes</string>
+    <string name="custom_url_scheme">cn.bit13.rhermes</string>
+</resources>

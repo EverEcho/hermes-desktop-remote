@@ -1,75 +1,66 @@
 # RHermes
 
-RHermes is a separately branded Electron Desktop client. This repository contains its shared
-TypeScript transport library from [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent).
-It is intended to connect to an already-running remote Hermes Gateway; it does
-not contain the Python agent, CLI, TUI, web app, gateway implementation, or
-plugins from the upstream monorepo.
+RHermes is a mobile-first iOS, Android, and Web client for an already-running
+Hermes Gateway. The repository contains only the client; it does not bundle or
+start the Python agent, CLI, TUI, or Gateway.
 
-## Repository layout
+## Requirements
 
-```text
-apps/desktop/  Electron + React Desktop application
-apps/shared/   Shared JSON-RPC/WebSocket transport code
-scripts/       Upstream synchronization helpers
-```
-
-`main` is intentionally Desktop-only. Development work happens on feature
-branches, currently `codex/remote-first-desktop`.
+- Node.js 22.22.2 (pinned in `.vfox.toml`)
+- A reachable Hermes Gateway
+- Xcode for iOS builds
+- Android Studio, Android SDK, and JDK for Android builds
 
 ## Development
-
-Requires Node.js 22.22.2. The project pins this version in `.vfox.toml`;
-activate vfox in your shell before running the commands below.
 
 ```bash
 npm install
 npm run dev
 ```
 
-The repository's `.npmrc` intentionally enables npm's legacy peer dependency
-resolution because the current upstream Desktop dependency set has a known
-peer-range mismatch.
+The development server listens on port 5175. Enter the real Gateway URL in the
+login screen; the Vite middleware proxies HTTP and WebSocket traffic during
+local development.
 
-The Desktop app can connect to a remote token-authenticated Gateway by setting:
-
-```bash
-export HERMES_DESKTOP_REMOTE_URL='https://gateway.example.com'
-export HERMES_DESKTOP_REMOTE_TOKEN='your-session-token'
-npm run dev
-```
-
-For normal use, configure the remote Gateway through the Desktop UI so the
-token is stored using the operating system credential store instead of an
-environment variable.
-
-## Syncing upstream Desktop changes
-
-The `upstream` remote points to the complete NousResearch repository. Do not
-run `git merge upstream/main`: that would reintroduce Python and unrelated
-applications. Instead, on a clean Desktop branch run:
+## Verification
 
 ```bash
-npm run sync:upstream
+npm run check
+npm run build
 ```
 
-The script fetches `upstream/main`, imports only `apps/desktop` and
-`apps/shared`, and regenerates the lockfile for this reduced workspace. Review,
-test, and commit the resulting diff.
+## Native projects
+
+Generate each native project once, then keep it in version control:
 
 ```bash
-git diff --stat
-npm run typecheck
-npm run test
-git add apps/desktop apps/shared package-lock.json
-git commit -m "chore(sync): import upstream Desktop changes"
+npm run build
+npm run cap:add:ios
+npm run cap:add:android
+npm run cap:sync
 ```
 
-When an upstream change requires a new root-level build convention, add the
-minimal equivalent here rather than importing the entire upstream workspace.
+Open the generated projects with `npm run cap:ios` or
+`npm run cap:android`. Native version numbers, signing, store metadata, and
+store update integration live in those projects.
+
+## Web deployment
+
+`npm run build` writes the static app to `dist/`. See
+[`doc/mobile-h5-nginx-deployment.md`](doc/mobile-h5-nginx-deployment.md) for a
+same-origin Gateway proxy example.
+
+The Web build can also be installed as a desktop PWA. Capacitor does not create
+native macOS, Windows, or Linux applications; native desktop packaging would
+require a separate Electron or Tauri shell.
+
+## Distribution
+
+- iOS binary updates are distributed through the App Store or TestFlight.
+- Google Play builds can use Play In-App Updates (flexible or immediate).
+- Web/PWA deployments update their static assets through the hosting layer.
 
 ## Upstream and licensing
 
-This is an independently maintained derivative of Hermes Agent. The upstream
-source and license are retained in [LICENSE](LICENSE). Keep the `upstream`
-remote so changes can be selectively imported and credited.
+RHermes is an independently maintained derivative of Hermes Agent. The
+upstream project and license are retained in [`LICENSE`](LICENSE).
