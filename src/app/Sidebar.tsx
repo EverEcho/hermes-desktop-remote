@@ -5,10 +5,13 @@ import { ActionSheet, type ActionSheetAction } from '@/ui/ActionSheet'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import * as api from '@/gateway/api'
+import { $authState, switchProfile } from '@/auth'
+import { $connectionState, $subagentsBySession } from '@/gateway'
 import { $activeSessionId, $sessionTitle, branchStoredSession } from '@/sessions/store'
 import { $sessionStates } from '@/sessions/session-states'
 import { useI18n } from '@/i18n'
 import { openExternalUrl } from '@/native'
+import type { ProfileInfo } from '@/types/hermes'
 
 export interface SidebarProps {
   sessions: SessionInfo[]
@@ -37,7 +40,6 @@ export function Sidebar(props: SidebarProps) {
   const [confirmDelete, setConfirmDelete] = useState<SessionInfo | null>(null)
   const [showMoreTools, setShowMoreTools] = useState(false)
   const [remoteSearch, setRemoteSearch] = useState<SessionInfo[] | null>(null)
-  const showSecondaryTools = !props.inDrawer || showMoreTools
 
   const normalizedSearch = search.trim().toLowerCase()
   const scopedSessions = useMemo(() => {
@@ -245,21 +247,48 @@ export function Sidebar(props: SidebarProps) {
       ]
     : []
 
+  const [activeTab, setActiveTab] = useState<'sessions' | 'bots'>('sessions')
+
   return (
     <div className={cn('flex h-full flex-col bg-(--ui-bg-sidebar)', props.inDrawer ? 'w-full' : 'w-[13.25rem] shrink-0 border-r border-(--ui-stroke-tertiary)')}>
-      {/* Top Navigation Actions */}
-      <nav className="space-y-0.5 px-2 pb-2 pt-3 shrink-0">
+      {/* 顶部 SESSIONS | BOTS 切换 Tab（桌面端对齐原版 PC） */}
+      {!props.inDrawer && (
+        <div className="flex items-center border-b border-(--ui-stroke-quaternary) px-2.5 pt-2 pb-1.5 shrink-0 select-none gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('sessions')}
+            className={cn(
+              'flex-1 rounded py-0.5 text-center text-[10px] font-bold tracking-wider transition-colors uppercase',
+              activeTab === 'sessions'
+                ? 'bg-(--ui-bg-elevated) text-(--ui-accent) shadow-xs'
+                : 'text-(--ui-text-quaternary) hover:text-(--ui-text-secondary)'
+            )}
+          >
+            SESSIONS
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('bots')}
+            className={cn(
+              'flex-1 rounded py-0.5 text-center text-[10px] font-bold tracking-wider transition-colors uppercase',
+              activeTab === 'bots'
+                ? 'bg-(--ui-bg-elevated) text-(--ui-accent) shadow-xs'
+                : 'text-(--ui-text-quaternary) hover:text-(--ui-text-secondary)'
+            )}
+          >
+            BOTS
+          </button>
+        </div>
+      )}
+
+      {/* 原版 PC 核心导航区 (5 大固定入口) */}
+      <nav className="space-y-0.5 px-2 pb-2 pt-2 shrink-0">
         <SidebarAction
-          icon={<Codicon name="add" className="text-sm" />}
+          icon={<Codicon name="robot" className="text-sm" />}
           label={t.sidebar.newSession}
-          shortcut="⌘ N"
+          shortcut={!props.inDrawer ? '⌘ N' : undefined}
           onClick={props.onNew}
           primary
-        />
-        <SidebarAction
-          icon={<Codicon name="folder-new" className="text-sm" />}
-          label={t.sidebar.newProjectSession}
-          onClick={() => props.onFeature('project')}
         />
         <SidebarAction
           icon={<Codicon name="symbol-misc" className="text-sm" />}
@@ -276,68 +305,82 @@ export function Sidebar(props: SidebarProps) {
           label={t.sidebar.artifacts}
           onClick={() => props.onFeature('artifacts')}
         />
-        {showSecondaryTools && <>
-        <SidebarAction
-          icon={<Codicon name="account" className="text-sm" />}
-          label={t.sidebar.profiles}
-          onClick={() => props.onFeature('profiles')}
-        />
-        {props.onToggleSessionScope ? <SidebarAction
-          icon={<Codicon name="accounts" className="text-sm" />}
-          label={props.sessionScope === 'all' ? t.sidebar.currentProfileSessions : t.sidebar.allProfileSessions}
-          onClick={props.onToggleSessionScope}
-        /> : null}
-        <SidebarAction
-          icon={<Codicon name="radio-tower" className="text-sm" />}
-          label={t.sidebar.webhooks}
-          onClick={() => props.onFeature('webhooks')}
-        />
-        <SidebarAction
-          icon={<Codicon name="terminal" className="text-sm" />}
-          label={t.sidebar.terminal}
-          onClick={() => props.onFeature('terminal')}
-        />
-        <SidebarAction
-          icon={<Codicon name="hubot" className="text-sm" />}
-          label={t.sidebar.agents}
-          onClick={() => props.onFeature('agents')}
-        />
-        <SidebarAction
-          icon={<Codicon name="database" className="text-sm" />}
-          label={t.sidebar.memory}
-          onClick={() => props.onFeature('memory')}
-        />
-        <SidebarAction
-          icon={<Codicon name="lightbulb" className="text-sm" />}
-          label={t.sidebar.learning}
-          onClick={() => props.onFeature('learning')}
-        />
-        <SidebarAction
-          icon={<Codicon name="output" className="text-sm" />}
-          label={t.sidebar.logs}
-          onClick={() => props.onFeature('logs')}
-        />
-        <SidebarAction
-          icon={<Codicon name="device-camera-video" className="text-sm" />}
-          label={t.sidebar.computerUse}
-          onClick={() => props.onFeature('computer-use')}
-        />
-        <SidebarAction
-          icon={<Codicon name="archive" className="text-sm" />}
-          label={t.sidebar.archived}
-          onClick={() => props.onFeature('archived')}
-        />
-        </>}
         <SidebarAction
           icon={<Codicon name="history" className="text-sm" />}
           label={t.sidebar.cron}
           onClick={() => props.onFeature('cron')}
         />
-        {props.inDrawer && <SidebarAction
-          icon={<Codicon name={showMoreTools ? 'chevron-up' : 'ellipsis'} className="text-sm" />}
-          label={showMoreTools ? t.sidebar.collapseTools : t.sidebar.moreTools}
-          onClick={() => setShowMoreTools(value => !value)}
-        />}
+
+        {props.inDrawer && (
+          <>
+            {showMoreTools && (
+              <>
+                <SidebarAction
+                  icon={<Codicon name="folder-new" className="text-sm" />}
+                  label={t.sidebar.newProjectSession}
+                  onClick={() => props.onFeature('project')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="account" className="text-sm" />}
+                  label={t.sidebar.profiles}
+                  onClick={() => props.onFeature('profiles')}
+                />
+                {props.onToggleSessionScope ? (
+                  <SidebarAction
+                    icon={<Codicon name="accounts" className="text-sm" />}
+                    label={props.sessionScope === 'all' ? t.sidebar.currentProfileSessions : t.sidebar.allProfileSessions}
+                    onClick={props.onToggleSessionScope}
+                  />
+                ) : null}
+                <SidebarAction
+                  icon={<Codicon name="radio-tower" className="text-sm" />}
+                  label={t.sidebar.webhooks}
+                  onClick={() => props.onFeature('webhooks')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="terminal" className="text-sm" />}
+                  label={t.sidebar.terminal}
+                  onClick={() => props.onFeature('terminal')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="hubot" className="text-sm" />}
+                  label={t.sidebar.agents}
+                  onClick={() => props.onFeature('agents')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="database" className="text-sm" />}
+                  label={t.sidebar.memory}
+                  onClick={() => props.onFeature('memory')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="lightbulb" className="text-sm" />}
+                  label={t.sidebar.learning}
+                  onClick={() => props.onFeature('learning')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="output" className="text-sm" />}
+                  label={t.sidebar.logs}
+                  onClick={() => props.onFeature('logs')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="device-camera-video" className="text-sm" />}
+                  label={t.sidebar.computerUse}
+                  onClick={() => props.onFeature('computer-use')}
+                />
+                <SidebarAction
+                  icon={<Codicon name="archive" className="text-sm" />}
+                  label={t.sidebar.archived}
+                  onClick={() => props.onFeature('archived')}
+                />
+              </>
+            )}
+            <SidebarAction
+              icon={<Codicon name={showMoreTools ? 'chevron-up' : 'ellipsis'} className="text-sm" />}
+              label={showMoreTools ? t.sidebar.collapseTools : t.sidebar.moreTools}
+              onClick={() => setShowMoreTools(value => !value)}
+            />
+          </>
+        )}
       </nav>
 
       {/* Search Input */}
@@ -353,17 +396,26 @@ export function Sidebar(props: SidebarProps) {
         </label>
       </div>
 
-      {/* Sessions List */}
-      <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-2 pb-3">
-        {props.loading && !visibleSessions.length && (
-          <div className="px-2 py-4 text-xs text-(--ui-text-quaternary)">{t.common.loading}</div>
-        )}
+      {/* Sessions List 或 BOTS List */}
+      {activeTab === 'bots' ? (
+        <BotsRoster
+          search={search}
+          onFeature={props.onFeature}
+          onNewSession={props.onNew}
+          onSelectSession={props.onSelect}
+          sessions={props.sessions}
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-2 pb-3">
+          {props.loading && !visibleSessions.length && (
+            <div className="px-2 py-4 text-xs text-(--ui-text-quaternary)">{t.common.loading}</div>
+          )}
 
-        {!props.loading && !visibleSessions.length && (
-          <div className="px-2 py-6 text-center text-xs text-(--ui-text-tertiary)">
-            {search ? t.sidebar.noMatches : t.sidebar.noSessions}
-          </div>
-        )}
+          {!props.loading && !visibleSessions.length && (
+            <div className="px-2 py-6 text-center text-xs text-(--ui-text-tertiary)">
+              {search ? t.sidebar.noMatches : t.sidebar.noSessions}
+            </div>
+          )}
 
         {/* Pinned Section */}
         <SidebarSection icon={<Codicon name="pin" className="text-xs" />} title={t.sidebar.pinned}>
@@ -469,31 +521,29 @@ export function Sidebar(props: SidebarProps) {
           </button>
         )}
       </div>
+      )}
 
-      {/* Footer Navigation */}
-      <div className="border-t border-(--ui-stroke-tertiary) p-2 space-y-0.5 shrink-0 text-xs text-(--ui-text-tertiary)">
-        <SidebarAction
-          icon={<Codicon name="server" className="text-sm" />}
-          label={t.sidebar.connections}
-          onClick={() => props.onFeature('connections')}
-        />
-        <SidebarAction
-          icon={<Codicon name="settings-gear" className="text-sm" />}
-          label={t.sidebar.settings}
-          onClick={() => props.onFeature('settings')}
-        />
-        <SidebarAction
-          icon={<Codicon name="server" className="text-sm" />}
-          label={t.sidebar.switchGateway}
-          onClick={() => props.onFeature('gateway')}
-        />
-        <SidebarAction
-          icon={<Codicon name="log-out" className="text-sm" />}
-          label={t.sidebar.logout}
-          onClick={() => props.onFeature('logout')}
-          destructive
-        />
-      </div>
+      {/* 底部操作区 (仅移动端抽屉展示) */}
+      {props.inDrawer && (
+        <div className="border-t border-(--ui-stroke-tertiary) p-2 space-y-0.5 shrink-0 text-xs text-(--ui-text-tertiary)">
+          <SidebarAction
+            icon={<Codicon name="settings-gear" className="text-sm" />}
+            label={t.sidebar.settings}
+            onClick={() => props.onFeature('settings')}
+          />
+          <SidebarAction
+            icon={<Codicon name="server" className="text-sm" />}
+            label={t.sidebar.switchGateway}
+            onClick={() => props.onFeature('gateway')}
+          />
+          <SidebarAction
+            icon={<Codicon name="log-out" className="text-sm" />}
+            label={t.sidebar.logout}
+            onClick={() => props.onFeature('logout')}
+            destructive
+          />
+        </div>
+      )}
 
       {/* Action Sheets */}
       <ActionSheet
@@ -800,5 +850,271 @@ function SidebarAction({
         </span>
       )}
     </button>
+  )
+}
+
+function BotsRoster({
+  search,
+  onFeature,
+  onNewSession,
+  onSelectSession,
+  sessions
+}: {
+  search: string
+  onFeature: (feature: 'skills' | 'messaging' | 'workspace' | 'artifacts' | 'agents' | 'archived' | 'project' | 'memory' | 'learning' | 'logs' | 'computer-use' | 'connections' | 'cron' | 'profiles' | 'webhooks' | 'terminal' | 'settings' | 'gateway' | 'logout') => void
+  onNewSession: () => void
+  onSelectSession: (id: string, profile?: string) => void
+  sessions: SessionInfo[]
+}) {
+  const authState = useStore($authState)
+  const connectionState = useStore($connectionState)
+  const subagentsMap = useStore($subagentsBySession)
+
+  const [profiles, setProfiles] = useState<ProfileInfo[]>([])
+  const [loading, setLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newBotName, setNewBotName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const activeProfile = authState.status === 'authenticated' ? authState.profile : 'default'
+
+  const fetchProfiles = useCallback(async () => {
+    if (connectionState !== 'open') return
+    setLoading(true)
+    try {
+      const res = await api.getProfiles()
+      if (res?.profiles) {
+        setProfiles(res.profiles)
+      }
+    } catch {
+      // best effort
+    } finally {
+      setLoading(false)
+    }
+  }, [connectionState])
+
+  useEffect(() => {
+    void fetchProfiles()
+  }, [fetchProfiles])
+
+  const handleCreateBot = async () => {
+    const name = newBotName.trim()
+    if (!name || submitting) return
+    setSubmitting(true)
+    try {
+      await api.createProfile({ name })
+      setNewBotName('')
+      setCreating(false)
+      await fetchProfiles()
+      await switchProfile(name)
+      onNewSession()
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : '创建智能体失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSelectBot = async (botName: string) => {
+    if (botName !== activeProfile) {
+      await switchProfile(botName)
+    }
+    const botSession = sessions.find(s => (s.profile || 'default') === botName)
+    if (botSession) {
+      onSelectSession(botSession.id, botName)
+    } else {
+      onNewSession()
+    }
+  }
+
+  const activeSubagents = useMemo(() => {
+    return [...subagentsMap.values()]
+      .flat()
+      .filter(item => item.status === 'running' || item.status === 'queued')
+  }, [subagentsMap])
+
+  const getBotColor = (name: string) => {
+    const colors = [
+      'bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30',
+      'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+      'bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30',
+      'bg-rose-500/20 text-rose-600 dark:text-rose-400 border-rose-500/30',
+      'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30',
+      'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
+    ]
+    let hash = 0
+    for (let i = 0; i < name.length; i++) hash += name.charCodeAt(i)
+    return colors[hash % colors.length]
+  }
+
+  const query = search.trim().toLowerCase()
+  const displayProfiles = profiles.length > 0 ? profiles : [{ name: 'default' }]
+  const filteredBots = displayProfiles.filter(p => !query || p.name.toLowerCase().includes(query))
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar px-2 pb-3 space-y-3">
+      {/* 头部统计与新建 Bot */}
+      <div className="rounded-lg border border-(--ui-stroke-quaternary) bg-(--ui-bg-card)/60 p-2.5 space-y-2 select-none">
+        <div className="flex items-center justify-between text-xs font-semibold text-(--ui-text-primary)">
+          <div className="flex items-center gap-1.5">
+            <Codicon name="hubot" className="text-sm text-(--ui-accent)" />
+            <span>智能体网络</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreating(!creating)}
+            className="flex items-center gap-1 rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-[10px] font-medium text-(--ui-accent) hover:opacity-80 transition-opacity"
+            title="新建智能体 (Profile)"
+          >
+            <Codicon name="add" className="text-[10px]" />
+            <span>新建</span>
+          </button>
+        </div>
+        <p className="text-[11px] text-(--ui-text-tertiary) leading-snug">
+          {filteredBots.length} 个智能体已就绪 · 当前处于 <span className="font-mono font-medium text-(--ui-text-primary)">{activeProfile}</span>
+        </p>
+
+        {/* 展开的新建输入框 */}
+        {creating && (
+          <div className="pt-1.5 border-t border-(--ui-stroke-quaternary) space-y-1.5">
+            <input
+              type="text"
+              value={newBotName}
+              onChange={e => setNewBotName(e.target.value)}
+              placeholder="智能体名称 (如 coder, ops)..."
+              className="w-full rounded border border-(--ui-stroke-tertiary) bg-(--ui-bg-chrome) px-2 py-1 text-xs text-(--ui-text-primary) outline-none focus:border-(--ui-accent)"
+              onKeyDown={e => e.key === 'Enter' && void handleCreateBot()}
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => setCreating(false)}
+                className="rounded px-2 py-0.5 text-[10px] text-(--ui-text-tertiary) hover:text-(--ui-text-primary)"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={!newBotName.trim() || submitting}
+                onClick={() => void handleCreateBot()}
+                className="rounded bg-(--ui-accent) px-2 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
+              >
+                {submitting ? '创建中…' : '创建'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 正在运行中的 Subagents 委托任务 */}
+      {activeSubagents.length > 0 && (
+        <SidebarSection
+          icon={<Codicon name="loading" spinning className="text-xs text-(--ui-accent)" />}
+          title={`正在执行的任务 (${activeSubagents.length})`}
+        >
+          {activeSubagents.map(task => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => onSelectSession(task.sessionId)}
+              className="group flex w-full flex-col gap-0.5 rounded px-2 py-1.5 text-left text-xs hover:bg-(--chrome-action-hover) transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <span className="truncate font-medium text-(--ui-text-primary)">{task.goal}</span>
+                <span className="text-[9px] font-mono text-(--ui-accent)">执行中</span>
+              </div>
+              {task.tool && (
+                <span className="truncate font-mono text-[10px] text-(--ui-text-tertiary)">{task.tool}</span>
+              )}
+            </button>
+          ))}
+        </SidebarSection>
+      )}
+
+      {/* Bot Roster 花名册列表 */}
+      <SidebarSection icon={<Codicon name="robot" className="text-xs" />} title="智能体花名册 (Roster)">
+        {loading && filteredBots.length === 0 ? (
+          <div className="px-2 py-3 text-center text-xs text-(--ui-text-quaternary)">
+            <Codicon name="loading" spinning className="mr-1 inline-block" />
+            加载智能体…
+          </div>
+        ) : filteredBots.length === 0 ? (
+          <div className="px-2 py-3 text-center text-xs text-(--ui-text-tertiary)">未找到匹配智能体</div>
+        ) : (
+          filteredBots.map(bot => {
+            const isActive = bot.name === activeProfile
+            const colorClass = getBotColor(bot.name)
+            const initial = (bot.name[0] || 'B').toUpperCase()
+
+            return (
+              <div
+                key={bot.name}
+                onClick={() => void handleSelectBot(bot.name)}
+                className={cn(
+                  'group flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs transition-colors cursor-pointer select-none',
+                  isActive
+                    ? 'bg-(--ui-row-active-background) text-(--ui-text-primary)'
+                    : 'text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)'
+                )}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* 彩色头像 */}
+                  <div
+                    className={cn(
+                      'relative flex size-6 shrink-0 items-center justify-center rounded border font-bold text-[11px]',
+                      colorClass
+                    )}
+                  >
+                    <span>{initial}</span>
+                    {isActive && (
+                      <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-emerald-500 ring-1 ring-(--ui-bg-sidebar)" />
+                    )}
+                  </div>
+
+                  {/* 名字与状态 */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1 truncate">
+                      <span className="truncate font-medium">{bot.name}</span>
+                      {isActive && (
+                        <span className="rounded bg-emerald-500/15 px-1 py-0.2 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          当前
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 快捷操作 */}
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onFeature('cron')
+                    }}
+                    className="flex size-5 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-elevated)"
+                    title="定时任务"
+                  >
+                    <Codicon name="history" className="text-xs" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      onFeature('profiles')
+                    }}
+                    className="flex size-5 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-elevated)"
+                    title="配置此智能体"
+                  >
+                    <Codicon name="settings-gear" className="text-xs" />
+                  </button>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </SidebarSection>
+    </div>
   )
 }

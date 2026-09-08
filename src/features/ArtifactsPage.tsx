@@ -65,13 +65,14 @@ function collectArtifacts(session: SessionInfo, messages: SessionMessage[]): Art
 interface ArtifactsPageProps {
   onClose: () => void
   onOpenSession: (sessionId: string) => void
+  onPreview?: (value: string) => void
   open: boolean
 }
 
 /** Cross-session index for artifacts already recorded by the Gateway. Indexing
  * is read-only and deliberately sequential so a remote Gateway is not flooded
  * by transcript requests. */
-export function ArtifactsPage({ onClose, onOpenSession, open }: ArtifactsPageProps) {
+export function ArtifactsPage({ onClose, onOpenSession, onPreview, open }: ArtifactsPageProps) {
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -120,7 +121,8 @@ export function ArtifactsPage({ onClose, onOpenSession, open }: ArtifactsPagePro
             <div className="flex items-center gap-3 border-b border-(--ui-stroke-tertiary) px-3 py-2.5 last:border-b-0" key={item.id}>
               <span className="rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.65rem] text-(--ui-text-tertiary)">{item.kind}</span>
               <button className="min-w-0 flex-1 text-left" onClick={() => onOpenSession(item.sessionId)} type="button"><span className="block truncate text-xs font-medium text-(--ui-text-primary)">{item.label}</span><span className="block truncate pt-0.5 text-[0.68rem] text-(--ui-text-quaternary)">{item.sessionTitle}</span></button>
-              {item.value.startsWith('http') ? <button className="text-xs text-(--ui-accent)" onClick={() => void openExternalUrl(item.value)} type="button">Open</button> : null}
+              {onPreview ? <button className="text-xs text-(--ui-accent)" onClick={() => onPreview(item.value)} type="button">Preview</button> : null}
+              {item.value.startsWith('http') ? <button className="text-xs text-(--ui-text-tertiary)" onClick={() => void openExternalUrl(item.value)} type="button">Open</button> : null}
             </div>
           ))}
         </div>

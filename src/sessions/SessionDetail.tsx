@@ -24,9 +24,10 @@ import { useI18n, type Catalog } from '@/i18n'
 
 interface SessionDetailProps {
   sessionId: string
+  onPreview?: (target: { kind: 'file' | 'url'; value: string }) => void
 }
 
-export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
+export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetailProps) {
   const { t } = useI18n()
   const messages = useStore($messages)
   const busy = useStore($busy)
@@ -54,6 +55,11 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
     userScrolledUp.current = false
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }
+
+  const runningTool = messages
+    .flatMap(m => m.parts ?? [])
+    .filter((p): p is Extract<MobileMessagePart, { type: 'tool-call' }> => p.type === 'tool-call' && p.status === 'running')
+    .pop()
 
   return (
     <div className="h-full flex flex-col relative bg-(--ui-bg-chrome)">
@@ -92,15 +98,38 @@ export function SessionDetail({ sessionId: _sessionId }: SessionDetailProps) {
                 key={msg.id}
                 message={msg}
                 onEditUser={msg.role === 'user' ? () => setEditingMessage(msg) : undefined}
+                onPreview={onPreview}
               />
             ))}
           </div>
         ))}
 
-        {awaitingResponse && (
-          <div className="flex items-center gap-2 py-2 px-1 text-(--ui-text-tertiary)">
-            <Codicon name="sparkle" className="text-xs text-(--ui-accent) animate-spin" />
-            <span className="text-xs text-(--ui-text-secondary)">{t.session.thinking}</span>
+        {(busy || awaitingResponse) && (
+          <div className="flex items-center justify-between rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-3 shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Codicon
+                name={runningTool ? 'tools' : 'sparkle'}
+                className="text-sm text-(--ui-accent) animate-spin shrink-0"
+              />
+              <div className="min-w-0">
+                <span className="block truncate text-xs font-medium text-(--ui-text-primary)">
+                  {runningTool ? `${t.session.ranTool(runningTool.name)}…` : t.session.thinking}
+                </span>
+                {runningTool && extractFilePath(runningTool.args) ? (
+                  <span className="block truncate font-mono text-[0.65rem] text-(--ui-text-tertiary)">
+                    {extractFilePath(runningTool.args)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <button
+              className="ml-3 flex items-center gap-1 rounded-md bg-(--ui-red)/10 px-2.5 py-1 text-xs font-medium text-(--ui-red) hover:bg-(--ui-red)/20 transition-colors"
+              onClick={() => void stopGeneration()}
+              type="button"
+            >
+              <Codicon name="debug-stop" className="text-xs" />
+              <span>{t.common.cancel}</span>
+            </button>
           </div>
         )}
 
@@ -177,7 +206,15 @@ function EditMessageSheet({ message, onClose }: { message: MobileMessage; onClos
   )
 }
 
-function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUser?: () => void }) {
+function MessageRow({
+  message,
+  onEditUser,
+  onPreview
+}: {
+  message: MobileMessage
+  onEditUser?: () => void
+  onPreview?: (target: { kind: 'file' | 'url'; value: string }) => void
+}) {
   const { t } = useI18n()
 
   if (message.role === 'system') {
@@ -208,6 +245,7 @@ function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUse
           <MarkdownContent
             content={textPart}
             className="text-(--conversation-text-font-size) leading-[var(--conversation-line-height)] text-(--ui-text-primary)"
+            onPreview={onPreview}
           />
           {onEditUser && (
             <button
@@ -232,7 +270,7 @@ function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUse
     if (!currentToolGroup.length) return
     const group = [...currentToolGroup]
     renderedElements.push(
-      <ToolGroupAccordion key={`tool-group-${renderedElements.length}`} tools={group} />
+      <ToolGroupAccordion key={`tool-group-${renderedElements.length}`} onPreview={onPreview} tools={group} />
     )
     currentToolGroup = []
   }
@@ -252,6 +290,7 @@ function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUse
             <MarkdownContent
               content={part.text}
               className="text-(--conversation-text-font-size) leading-relaxed text-(--ui-text-primary)"
+              onPreview={onPreview}
             />
           </div>
         )
@@ -346,7 +385,13 @@ function ThinkingAccordion({ reasoning }: { reasoning: string }) {
   )
 }
 
-function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { type: 'tool-call' }>[] }) {
+function ToolGroupAccordion({
+  onPreview,
+  tools
+}: {
+  onPreview?: (target: { kind: 'file' | 'url'; value: string }) => void
+  tools: Extract<MobileMessagePart, { type: 'tool-call' }>[]
+}) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   if (!tools.length) return null
@@ -388,36 +433,49 @@ function ToolGroupAccordion({ tools }: { tools: Extract<MobileMessagePart, { typ
 
       {open && (
         <div className="mt-1.5 p-2.5 text-[0.72rem] font-mono rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) space-y-2 text-(--ui-text-secondary)">
-          {tools.map((tc, i) => (
-            <div key={tc.id || i} className={cn(i > 0 && 'border-t border-(--ui-stroke-quaternary) pt-2')}>
-              <div className="flex items-center gap-1.5 text-(--ui-text-tertiary) mb-1 font-sans">
-                <span className="font-mono text-[0.7rem] font-semibold text-(--ui-text-secondary)">
-                  {formatToolHeader(t, tc.name, tc.args, tc.summary)}
-                </span>
-                {tc.durationS != null && (
-                  <span className="text-[0.625rem] text-(--ui-text-quaternary) ml-auto">
-                    {tc.durationS.toFixed(1)}s
+          {tools.map((tc, i) => {
+            const filePath = extractFilePath(tc.args)
+
+            return (
+              <div key={tc.id || i} className={cn(i > 0 && 'border-t border-(--ui-stroke-quaternary) pt-2')}>
+                <div className="flex items-center gap-1.5 text-(--ui-text-tertiary) mb-1 font-sans">
+                  <span className="font-mono text-[0.7rem] font-semibold text-(--ui-text-secondary) truncate">
+                    {formatToolHeader(t, tc.name, tc.args, tc.summary)}
                   </span>
+                  {onPreview && filePath ? (
+                    <button
+                      className="ml-1 shrink-0 rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.62rem] text-(--ui-accent) hover:bg-(--chrome-action-hover)"
+                      onClick={() => onPreview({ kind: 'file', value: filePath })}
+                      type="button"
+                    >
+                      Preview
+                    </button>
+                  ) : null}
+                  {tc.durationS != null && (
+                    <span className="text-[0.625rem] text-(--ui-text-quaternary) ml-auto shrink-0">
+                      {tc.durationS.toFixed(1)}s
+                    </span>
+                  )}
+                </div>
+                {extractCommandText(tc.args) && (
+                  <div className="overflow-x-auto bg-(--ui-bg-chrome)/50 p-1.5 rounded border border-(--ui-stroke-quaternary) mb-1">
+                    <span className="text-(--ui-accent) select-none">$ </span>
+                    {extractCommandText(tc.args)}
+                  </div>
+                )}
+                {Boolean(tc.result) && (
+                  <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
+                    {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}
+                  </pre>
+                )}
+                {tc.inlineDiff && (
+                  <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
+                    {tc.inlineDiff}
+                  </pre>
                 )}
               </div>
-              {extractCommandText(tc.args) && (
-                <div className="overflow-x-auto bg-(--ui-bg-chrome)/50 p-1.5 rounded border border-(--ui-stroke-quaternary) mb-1">
-                  <span className="text-(--ui-accent) select-none">$ </span>
-                  {extractCommandText(tc.args)}
-                </div>
-              )}
-              {Boolean(tc.result) && (
-                <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
-                  {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}
-                </pre>
-              )}
-              {tc.inlineDiff && (
-                <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
-                  {tc.inlineDiff}
-                </pre>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -453,6 +511,17 @@ function extractCommandText(args: unknown): string | null {
     const record = args as Record<string, unknown>
     if (typeof record.command === 'string') return record.command
     if (typeof record.cmd === 'string') return record.cmd
+  }
+  return null
+}
+
+function extractFilePath(args: unknown): string | null {
+  if (typeof args === 'object' && args !== null) {
+    const record = args as Record<string, unknown>
+    if (typeof record.path === 'string') return record.path
+    if (typeof record.file_path === 'string') return record.file_path
+    if (typeof record.filePath === 'string') return record.filePath
+    if (typeof record.target === 'string') return record.target
   }
   return null
 }

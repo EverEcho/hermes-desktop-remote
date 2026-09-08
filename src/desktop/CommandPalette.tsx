@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 export interface DesktopCommand {
   description?: string
@@ -22,6 +23,7 @@ interface DesktopCommandPaletteProps {
  * keyboard handling only; every command delegates to the shared remote
  * Gateway/session actions supplied by the shell. */
 export function DesktopCommandPalette({ commands, onClose, open }: DesktopCommandPaletteProps) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -86,7 +88,7 @@ export function DesktopCommandPalette({ commands, onClose, open }: DesktopComman
                 run(matches[selectedIndex])
               }
             }}
-            placeholder="Search commands…"
+            placeholder={t.desktop.commands.searchPlaceholder}
             ref={inputRef}
             value={query}
           />
@@ -114,7 +116,7 @@ export function DesktopCommandPalette({ commands, onClose, open }: DesktopComman
               {command.shortcut ? <kbd className="text-[0.65rem] text-(--ui-text-quaternary)">{command.shortcut}</kbd> : null}
             </button>
           )) : (
-            <div className="px-3 py-8 text-center text-xs text-(--ui-text-quaternary)">No matching commands</div>
+            <div className="px-3 py-8 text-center text-xs text-(--ui-text-quaternary)">{t.desktop.commands.noMatches}</div>
           )}
         </div>
       </div>

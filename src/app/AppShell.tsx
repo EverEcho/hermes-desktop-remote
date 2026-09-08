@@ -33,10 +33,11 @@ import { useI18n } from '@/i18n'
 import { Sidebar } from './Sidebar'
 import { NewSessionHome } from './NewSessionHome'
 import { DesktopTitlebar } from './DesktopTitlebar'
-import { DesktopWorkspacePanel } from '@/workspace/DesktopWorkspacePanel'
+import { DesktopWorkspacePanel, type RemotePreviewTarget } from '@/workspace/DesktopWorkspacePanel'
 import { DesktopCommandPalette, type DesktopCommand } from '@/desktop/CommandPalette'
 import { DesktopSessionPicker } from '@/desktop/SessionPicker'
 import { DesktopSessionTabs } from '@/desktop/SessionTabs'
+import { DesktopStatusBar } from '@/desktop/DesktopStatusBar'
 import { openExternalUrl } from '@/native'
 import type { AppSurface } from '@/bootstrap/runtime'
 
@@ -49,6 +50,7 @@ function loadPanelPreference(key: string, fallback: boolean): boolean {
 }
 
 export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => void; surface: AppSurface }) {
+  const { t } = useI18n()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
@@ -57,7 +59,22 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   const [messagingOpen, setMessagingOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false)
-  const [desktopTabs, setDesktopTabs] = useState<string[]>([])
+  const [desktopTabs, setDesktopTabs] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem('rhermes-desktop-tabs')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('rhermes-desktop-tabs', JSON.stringify(desktopTabs))
+    } catch {
+      // best effort
+    }
+  }, [desktopTabs])
   const [pendingProfileSession, setPendingProfileSession] = useState<{ id: string; profile: string; task: 'branch' | 'open' } | null>(null)
   const pendingBranchResolve = useRef<{ id: string; profile: string; resolve: (created: boolean) => void } | null>(null)
   const [profilesOpen, setProfilesOpen] = useState(false)
@@ -74,6 +91,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(() => loadPanelPreference(LEFT_SIDEBAR_KEY, true))
   const [rightSidebarVisible, setRightSidebarVisible] = useState(() => loadPanelPreference(RIGHT_SIDEBAR_KEY, true))
+  const [desktopPreviewTarget, setDesktopPreviewTarget] = useState<RemotePreviewTarget | null>(null)
   const isDesktopSurface = surface === 'desktop'
   const connectionState = useStore($connectionState)
   const gatewayProfile = useStore($gatewayProfile)
@@ -193,6 +211,18 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
     })
   }, [])
 
+  const handleCloseOtherDesktopTabs = useCallback((keepId: string) => {
+    setDesktopTabs([keepId])
+    if ($activeSessionId.get() !== keepId) {
+      void openSession(keepId)
+    }
+  }, [])
+
+  const handleCloseAllDesktopTabs = useCallback(() => {
+    setDesktopTabs([])
+    closeSession()
+  }, [])
+
   // Desktop keeps the productive shortcuts on the desktop surface only. The
   // mobile UI deliberately has no keyboard contract, while the browser can
   // opt into the desktop surface at bootstrap and receives the same behavior
@@ -290,36 +320,49 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   )
 
   const desktopCommands: DesktopCommand[] = [
-    { id: 'new-session', icon: 'add', label: 'New session', shortcut: '⌘ N', run: () => void handleNewSession() },
-    { id: 'new-project-session', icon: 'folder-new', label: 'New project session', description: 'Choose a folder on the connected Gateway', run: () => setProjectSessionOpen(true) },
-    { id: 'toggle-left-sidebar', icon: 'layout-sidebar-left', label: leftSidebarVisible ? 'Hide left sidebar' : 'Show left sidebar', shortcut: '⌘ B', run: () => setLeftSidebarVisible(value => !value) },
-    { id: 'settings', icon: 'settings-gear', label: 'Open settings', shortcut: '⌘ ,', run: () => setSettingsOpen(true) },
-    { id: 'skills', icon: 'symbol-misc', label: 'Open skills', run: () => setSkillsOpen(true) },
-    { id: 'artifacts', icon: 'files', label: 'Browse artifacts', description: 'Generated files and links across sessions', run: () => setArtifactsOpen(true) },
-    { id: 'agents', icon: 'hubot', label: 'View delegated agents', description: 'Monitor Gateway subagent tasks', run: () => setAgentsOpen(true) },
-    { id: 'memory', icon: 'database', label: 'Memory & Curator', description: 'Manage Gateway memory and skill maintenance', run: () => setMemoryOpen(true) },
-    { id: 'learning', icon: 'lightbulb', label: 'Learning map', description: 'Browse learned skills and memories', run: () => setLearningOpen(true) },
-    { id: 'logs', icon: 'output', label: 'Gateway logs', description: 'View remote Gateway diagnostics', run: () => setLogsOpen(true) },
-    { id: 'computer-use', icon: 'device-camera-video', label: 'Computer Use', description: 'Check permissions on the Gateway host', run: () => setComputerUseOpen(true) },
-    { id: 'connections', icon: 'server', label: 'Manage remote Gateways', description: 'Switch or remove saved Gateway connections', run: () => setConnectionsOpen(true) },
-    { id: 'archived', icon: 'archive', label: 'Archived sessions', description: 'Restore or delete archived conversations', run: () => setArchivedSessionsOpen(true) },
-    { id: 'profiles', icon: 'account', label: 'Manage profiles', run: () => setProfilesOpen(true) },
-    { id: 'webhooks', icon: 'radio-tower', label: 'Manage webhooks', run: () => setWebhooksOpen(true) },
-    { id: 'terminal', icon: 'terminal', label: 'Remote terminal', description: 'Select execution backend and view live output', run: () => setTerminalOpen(true) },
-    { id: 'messaging', icon: 'comment-discussion', label: 'Open messaging', run: () => setMessagingOpen(true) },
-    { id: 'cron', icon: 'history', label: 'Open scheduled tasks', run: () => setCronOpen(true) },
-    { id: 'change-gateway', icon: 'server', label: 'Connect another Gateway', run: onChangeGateway }
+    { id: 'new-session', icon: 'add', label: t.desktop.commands.newSession, shortcut: '⌘ N', run: () => void handleNewSession() },
+    { id: 'new-project-session', icon: 'folder-new', label: t.desktop.commands.newProjectSession, description: t.desktop.commands.newProjectSessionDesc, run: () => setProjectSessionOpen(true) },
+    { id: 'toggle-left-sidebar', icon: 'layout-sidebar-left', label: leftSidebarVisible ? t.desktop.commands.hideLeftSidebar : t.desktop.commands.showLeftSidebar, shortcut: '⌘ B', run: () => setLeftSidebarVisible(value => !value) },
+    { id: 'settings', icon: 'settings-gear', label: t.desktop.commands.openSettings, shortcut: '⌘ ,', run: () => setSettingsOpen(true) },
+    { id: 'skills', icon: 'symbol-misc', label: t.desktop.commands.openSkills, run: () => setSkillsOpen(true) },
+    { id: 'artifacts', icon: 'files', label: t.desktop.commands.browseArtifacts, description: t.desktop.commands.browseArtifactsDesc, run: () => setArtifactsOpen(true) },
+    { id: 'agents', icon: 'hubot', label: t.desktop.commands.viewAgents, description: t.desktop.commands.viewAgentsDesc, run: () => setAgentsOpen(true) },
+    { id: 'memory', icon: 'database', label: t.desktop.commands.memoryCurator, description: t.desktop.commands.memoryCuratorDesc, run: () => setMemoryOpen(true) },
+    { id: 'learning', icon: 'lightbulb', label: t.desktop.commands.learningMap, description: t.desktop.commands.learningMapDesc, run: () => setLearningOpen(true) },
+    { id: 'logs', icon: 'output', label: t.desktop.commands.gatewayLogs, description: t.desktop.commands.gatewayLogsDesc, run: () => setLogsOpen(true) },
+    { id: 'computer-use', icon: 'device-camera-video', label: t.desktop.commands.computerUse, description: t.desktop.commands.computerUseDesc, run: () => setComputerUseOpen(true) },
+    { id: 'connections', icon: 'server', label: t.desktop.commands.manageGateways, description: t.desktop.commands.manageGatewaysDesc, run: () => setConnectionsOpen(true) },
+    { id: 'archived', icon: 'archive', label: t.desktop.commands.archivedSessions, description: t.desktop.commands.archivedSessionsDesc, run: () => setArchivedSessionsOpen(true) },
+    { id: 'profiles', icon: 'account', label: t.desktop.commands.manageProfiles, run: () => setProfilesOpen(true) },
+    { id: 'webhooks', icon: 'radio-tower', label: t.desktop.commands.manageWebhooks, run: () => setWebhooksOpen(true) },
+    { id: 'terminal', icon: 'terminal', label: t.desktop.commands.remoteTerminal, description: t.desktop.commands.remoteTerminalDesc, run: () => setTerminalOpen(true) },
+    { id: 'messaging', icon: 'comment-discussion', label: t.desktop.commands.openMessaging, run: () => setMessagingOpen(true) },
+    { id: 'cron', icon: 'history', label: t.desktop.commands.openCron, run: () => setCronOpen(true) },
+    { id: 'change-gateway', icon: 'server', label: t.desktop.commands.connectAnotherGateway, run: onChangeGateway }
   ]
 
   if (activeSessionId && currentCwd) {
     desktopCommands.splice(2, 0,
-      { id: 'workspace', icon: 'folder-opened', label: 'Open workspace', run: () => setWorkspaceOpen(true) },
-      { id: 'toggle-right-sidebar', icon: 'layout-sidebar-right', label: rightSidebarVisible ? 'Hide file list' : 'Show file list', shortcut: '⌘ ⇧ B', run: () => setRightSidebarVisible(value => !value) }
+      { id: 'workspace', icon: 'folder-opened', label: t.desktop.commands.openWorkspace, run: () => setWorkspaceOpen(true) },
+      { id: 'toggle-right-sidebar', icon: 'layout-sidebar-right', label: rightSidebarVisible ? t.desktop.commands.hideFileList : t.desktop.commands.showFileList, shortcut: '⌘ ⇧ B', run: () => setRightSidebarVisible(value => !value) }
     )
   }
 
+  const handlePreviewTarget = useCallback((target: { kind: 'file' | 'url'; value: string }) => {
+    if (!isDesktopSurface) {
+      if (target.kind === 'url') {
+        void openExternalUrl(target.value)
+      } else {
+        setWorkspaceOpen(true)
+      }
+      return
+    }
+    setRightSidebarVisible(true)
+    setDesktopPreviewTarget(target)
+  }, [isDesktopSurface])
+
   return (
-    <div className="h-full flex bg-(--ui-bg-chrome)">
+    <div className="h-full flex flex-col bg-(--ui-bg-chrome) overflow-hidden">
       {isDesktopSurface ? (
         <DesktopTitlebar
           connectionState={connectionState}
@@ -334,8 +377,11 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
           onRetry={handleRetry}
         />
       ) : null}
-      {/* Desktop Sidebar (hidden on mobile) */}
-      <div className={leftSidebarVisible ? (isDesktopSurface ? 'flex shrink-0' : 'hidden md:flex shrink-0') : 'hidden'}>
+
+      {/* 主工作区（上层平面：包含左侧栏、中间内容、右侧工作台） */}
+      <div className="flex min-h-0 flex-1 w-full overflow-hidden">
+        {/* Desktop Sidebar (hidden on mobile) */}
+        <div className={leftSidebarVisible ? (isDesktopSurface ? 'flex shrink-0' : 'hidden md:flex shrink-0') : 'hidden'}>
         <Sidebar
           sessions={sessions}
           cronSessions={cronSessions}
@@ -369,16 +415,26 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
           onWorkspacePress={activeSessionId ? () => setWorkspaceOpen(true) : undefined}
         />
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {isDesktopSurface ? <DesktopSessionTabs activeSessionId={activeSessionId} onClose={handleCloseDesktopTab} onSelect={handleSelectSession} sessions={sessions} tabIds={desktopTabs} /> : null}
-          <div className="min-h-0 flex-1">
-            {activeSessionId ? (
-              <SessionDetail sessionId={activeSessionId} />
-            ) : (
-              <NewSessionHome />
-            )}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {isDesktopSurface ? (
+              <DesktopSessionTabs
+                activeSessionId={activeSessionId}
+                onClose={handleCloseDesktopTab}
+                onCloseAll={handleCloseAllDesktopTabs}
+                onCloseOthers={handleCloseOtherDesktopTabs}
+                onSelect={handleSelectSession}
+                sessions={sessions}
+                tabIds={desktopTabs}
+              />
+            ) : null}
+            <div className="min-h-0 flex-1">
+              {activeSessionId ? (
+                <SessionDetail onPreview={handlePreviewTarget} sessionId={activeSessionId} />
+              ) : (
+                <NewSessionHome onSelectSession={handleSelectSession} />
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Mobile Drawer (uses identical unified Sidebar component) */}
         <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}>
@@ -411,7 +467,15 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
       <ProfilesPage open={profilesOpen} onClose={() => setProfilesOpen(false)} />
       <WebhooksPage open={webhooksOpen} onClose={() => setWebhooksOpen(false)} />
       <TerminalPage onClose={() => setTerminalOpen(false)} open={terminalOpen} sessionId={activeSessionId} />
-      <ArtifactsPage onClose={() => setArtifactsOpen(false)} onOpenSession={id => { setArtifactsOpen(false); handleSelectSession(id) }} open={artifactsOpen} />
+      <ArtifactsPage
+        onClose={() => setArtifactsOpen(false)}
+        onOpenSession={id => { setArtifactsOpen(false); handleSelectSession(id) }}
+        onPreview={value => {
+          handlePreviewTarget({ kind: /^https?:\/\//i.test(value) ? 'url' : 'file', value })
+          setArtifactsOpen(false)
+        }}
+        open={artifactsOpen}
+      />
       <AgentsPage onClose={() => setAgentsOpen(false)} onOpenSession={id => { setAgentsOpen(false); handleSelectSession(id) }} open={agentsOpen} />
       <ArchivedSessionsPage onClose={() => setArchivedSessionsOpen(false)} onOpenSession={id => { setArchivedSessionsOpen(false); handleSelectSession(id) }} open={archivedSessionsOpen} />
       <ProjectSessionPage onClose={() => setProjectSessionOpen(false)} open={projectSessionOpen} />
@@ -471,13 +535,37 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
         </>
       ) : null}
       </div>
+
       {isDesktopSurface && rightSidebarVisible && currentCwd ? (
-        <DesktopWorkspacePanel
-          cwd={currentCwd}
-          onClose={() => setRightSidebarVisible(false)}
-          onOpenWorkspace={() => setWorkspaceOpen(true)}
+          <DesktopWorkspacePanel
+            cwd={currentCwd}
+            externalPreview={desktopPreviewTarget}
+            onClose={() => setRightSidebarVisible(false)}
+            onOpenTerminal={() => setTerminalOpen(true)}
+            onOpenWorkspace={() => setWorkspaceOpen(true)}
+            onPreviewConsumed={() => setDesktopPreviewTarget(null)}
+          />
+        ) : null}
+      </div>
+
+      {/* 底部通栏状态栏（下层平面：横跨整屏宽度，left / content / right 在同一个水平基准面） */}
+      {isDesktopSurface && (
+        <DesktopStatusBar
+          clientVersion="v0.17.0"
+          leftSidebarVisible={leftSidebarVisible}
+          sessionScope={sessionScope}
+          onChangeGateway={onChangeGateway}
+          onFeature={handleFeature}
+          onNewSession={handleNewSession}
+          onOpenAgents={() => setAgentsOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onOpenConnections={() => setConnectionsOpen(true)}
+          onOpenCron={() => setCronOpen(true)}
+          onOpenWebhooks={() => setWebhooksOpen(true)}
+          onToggleSessionScope={() => setSessionScope(sessionScope === 'all' ? 'active' : 'all')}
+          onToggleWorkspace={() => setRightSidebarVisible(v => !v)}
         />
-      ) : null}
+      )}
     </div>
   )
 }

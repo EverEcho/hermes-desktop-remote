@@ -13,6 +13,13 @@ interface WorkspaceSheetProps {
 }
 
 type Tab = 'files' | 'changes'
+type FilePreview = { path: string; kind: 'image' | 'pdf' | 'text'; content?: string; dataUrl?: string }
+
+function previewKind(path: string): FilePreview['kind'] {
+  if (/\.(?:avif|gif|jpe?g|png|svg|webp)(?:[?#].*)?$/i.test(path)) return 'image'
+  if (/\.pdf(?:[?#].*)?$/i.test(path)) return 'pdf'
+  return 'text'
+}
 
 /* Older/remote backends can omit the list fields entirely — coerce at the
  * boundary so the render never reads `.length` off undefined. */
@@ -32,7 +39,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const [currentPath, setCurrentPath] = useState(cwd ?? '')
   const [gitStatus, setGitStatus] = useState<GitStatusResponse | null>(null)
   const [loading, setLoading] = useState(false)
-  const [fileContent, setFileContent] = useState<{ path: string; content: string } | null>(null)
+  const [fileContent, setFileContent] = useState<FilePreview | null>(null)
   const [gitWorking, setGitWorking] = useState<string | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
   const [gitError, setGitError] = useState<string | null>(null)
@@ -82,8 +89,14 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
     }
 
     try {
-      const result = await api.fsReadText(entry.path)
-      setFileContent({ path: entry.path, content: result.content })
+      const kind = previewKind(entry.path)
+      if (kind === 'text') {
+        const result = await api.fsReadText(entry.path)
+        setFileContent({ path: entry.path, kind, content: result.content })
+      } else {
+        const dataUrl = await api.fsReadDataUrl(entry.path)
+        setFileContent({ path: entry.path, kind, dataUrl })
+      }
     } catch {
       // best effort
     }
@@ -200,9 +213,17 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
               <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary) mb-2 font-mono truncate">
                 {fileContent.path}
               </p>
-              <pre className="text-(--conversation-tool-font-size) font-mono text-(--ui-text-secondary) bg-(--ui-widget-surface-background) rounded-lg p-3 overflow-x-auto whitespace-pre-wrap select-text">
-                {fileContent.content}
-              </pre>
+              {fileContent.kind === 'image' && fileContent.dataUrl ? (
+                <div className="grid max-h-[65vh] min-h-48 place-items-center overflow-auto rounded-lg bg-(--ui-widget-surface-background) p-3">
+                  <img alt={fileContent.path.split('/').pop()} className="max-h-[60vh] max-w-full object-contain" src={fileContent.dataUrl} />
+                </div>
+              ) : fileContent.kind === 'pdf' && fileContent.dataUrl ? (
+                <iframe className="h-[65vh] w-full rounded-lg border border-(--ui-stroke-tertiary) bg-white" src={fileContent.dataUrl} title={fileContent.path} />
+              ) : (
+                <pre className="text-(--conversation-tool-font-size) font-mono text-(--ui-text-secondary) bg-(--ui-widget-surface-background) rounded-lg p-3 overflow-x-auto whitespace-pre-wrap select-text">
+                  {fileContent.content}
+                </pre>
+              )}
             </div>
           ) : (
             <div>

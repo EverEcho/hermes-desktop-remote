@@ -5,6 +5,8 @@ import { cn } from '@/ui/utils'
 interface DesktopSessionTabsProps {
   activeSessionId: string | null
   onClose: (id: string) => void
+  onCloseOthers?: (id: string) => void
+  onCloseAll?: () => void
   onSelect: (id: string, profile?: string) => void
   sessions: SessionInfo[]
   tabIds: string[]
@@ -12,7 +14,15 @@ interface DesktopSessionTabsProps {
 
 /** A lightweight desktop tab strip. Tabs are navigation history, not local
  * runtimes: selecting one still resumes it through the remote Gateway. */
-export function DesktopSessionTabs({ activeSessionId, onClose, onSelect, sessions, tabIds }: DesktopSessionTabsProps) {
+export function DesktopSessionTabs({
+  activeSessionId,
+  onClose,
+  onCloseOthers,
+  onCloseAll,
+  onSelect,
+  sessions,
+  tabIds
+}: DesktopSessionTabsProps) {
   if (!tabIds.length) return null
   const byId = new Map(sessions.map(session => [session._lineage_root_id ?? session.id, session]))
 
@@ -25,10 +35,16 @@ export function DesktopSessionTabs({ activeSessionId, onClose, onSelect, session
         return (
           <div
             className={cn(
-              'group flex min-w-28 max-w-56 items-center gap-1 rounded-t-md border border-b-0 px-2 py-1 text-xs',
+              'group flex min-w-28 max-w-56 items-center gap-1 rounded-t-md border border-b-0 px-2 py-1 text-xs select-none',
               active ? 'border-(--ui-stroke-tertiary) bg-(--ui-bg-card) text-(--ui-text-primary)' : 'border-transparent text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover)'
             )}
             key={id}
+            onAuxClick={event => {
+              if (event.button === 1) {
+                event.preventDefault()
+                onClose(id)
+              }
+            }}
           >
             <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelect(id, session?.profile)} title={title} type="button">
               {title}
@@ -44,6 +60,30 @@ export function DesktopSessionTabs({ activeSessionId, onClose, onSelect, session
           </div>
         )
       })}
+      {tabIds.length > 1 && (
+        <div className="ml-auto flex items-center gap-1 pb-1 pl-2">
+          {activeSessionId && onCloseOthers ? (
+            <button
+              className="rounded px-1.5 py-0.5 text-[0.625rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)"
+              onClick={() => onCloseOthers(activeSessionId)}
+              title="Close other tabs"
+              type="button"
+            >
+              Close others
+            </button>
+          ) : null}
+          {onCloseAll ? (
+            <button
+              className="rounded px-1.5 py-0.5 text-[0.625rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-red)"
+              onClick={onCloseAll}
+              title="Close all tabs"
+              type="button"
+            >
+              Close all
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

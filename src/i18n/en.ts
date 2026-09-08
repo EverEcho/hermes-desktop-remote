@@ -11,7 +11,8 @@ export const en = {
     delete: 'Delete',
     save: 'Save',
     saving: 'Saving…',
-    refresh: 'Refresh'
+    refresh: 'Refresh',
+    cancel: 'Cancel'
   },
   errors: {
     diskFull: 'Disk full — free some space, then try again.'
@@ -31,7 +32,87 @@ export const en = {
     openWorkspace: 'Open workspace',
     gatewayConnected: 'Gateway connected',
     reconnectGateway: 'Reconnect gateway',
-    refreshFiles: 'Refresh files'
+    refreshFiles: 'Refresh files',
+    commands: {
+      searchPlaceholder: 'Search commands…',
+      noMatches: 'No matching commands',
+      newSession: 'New session',
+      newProjectSession: 'New project session',
+      newProjectSessionDesc: 'Choose a folder on the connected Gateway',
+      hideLeftSidebar: 'Hide left sidebar',
+      showLeftSidebar: 'Show left sidebar',
+      openSettings: 'Open settings',
+      openSkills: 'Open skills',
+      browseArtifacts: 'Browse artifacts',
+      browseArtifactsDesc: 'Generated files and links across sessions',
+      viewAgents: 'View delegated agents',
+      viewAgentsDesc: 'Monitor Gateway subagent tasks',
+      memoryCurator: 'Memory & Curator',
+      memoryCuratorDesc: 'Manage Gateway memory and skill maintenance',
+      learningMap: 'Learning map',
+      learningMapDesc: 'Browse learned skills and memories',
+      gatewayLogs: 'Gateway logs',
+      gatewayLogsDesc: 'View remote Gateway diagnostics',
+      computerUse: 'Computer Use',
+      computerUseDesc: 'Check permissions on the Gateway host',
+      manageGateways: 'Manage remote Gateways',
+      manageGatewaysDesc: 'Switch or remove saved Gateway connections',
+      archivedSessions: 'Archived sessions',
+      archivedSessionsDesc: 'Restore or delete archived conversations',
+      manageProfiles: 'Manage profiles',
+      manageWebhooks: 'Manage webhooks',
+      remoteTerminal: 'Remote terminal',
+      remoteTerminalDesc: 'Select execution backend and view live output',
+      openMessaging: 'Open messaging',
+      openCron: 'Open scheduled tasks',
+      connectAnotherGateway: 'Connect another Gateway',
+      openWorkspace: 'Open workspace',
+      hideFileList: 'Hide file list',
+      showFileList: 'Show file list'
+    },
+    sessionPicker: {
+      searchPlaceholder: 'Search conversations…',
+      noMatches: 'No matching conversations',
+      untitled: 'Untitled conversation'
+    },
+    statusbar: {
+      commandPalette: 'Command Palette (⌘K)',
+      gatewaySwitch: 'Gateway connection & switch',
+      remoteGateway: 'Remote Gateway',
+      connectedWithPing: (ms: number) => `Connected (${ms}ms latency)`,
+      connecting: 'Connecting…',
+      offline: 'Offline',
+      reconnect: 'Reconnect Gateway',
+      switchGateway: 'Switch Gateway…',
+      gateway: 'Gateway',
+      ready: 'Ready',
+      notReady: 'Not Ready',
+      workspaceTitle: (cwd: string) => `Workspace: ${cwd} (click to copy path)`,
+      copied: 'Copied!',
+      proxy: 'Proxy',
+      proxyTip: 'Proxy & network connection config',
+      cron: 'Cron',
+      cronTip: 'Scheduled tasks & cron management',
+      webhooks: 'Webhook',
+      webhooksTip: 'Webhook triggers & subscriptions',
+      agents: 'Agents',
+      agentsTip: 'Delegated agents & subagent monitoring',
+      approvalMode: {
+        title: 'Approval Mode',
+        ariaLabel: (mode: string) => `Approval mode: ${mode}`,
+        manual: 'Manual',
+        manualDescription: 'Ask before running actions that require approval',
+        smart: 'Smart',
+        smartDescription: 'Auto-evaluate actions and ask when needed',
+        off: 'Off',
+        offDescription: 'Do not prompt for approval, run directly'
+      },
+      session: 'Session',
+      contextUsage: 'Context',
+      terminal: 'Terminal',
+      clientVersion: 'Client',
+      backendVersion: 'Backend'
+    }
   },
   sidebar: {
     newSession: 'New session',
@@ -412,9 +493,77 @@ export const en = {
   },
   home: {
     tagline: "Tell me what you're making · refactors, tiny helpers, and big scary repos alike",
-    placeholder: 'Start with a goal',
+    placeholder: 'What should we work on?',
     startFailed: 'Unable to start a conversation. Check the gateway connection and try again.',
-    start: 'Start conversation'
+    start: 'Start conversation',
+    layout: {
+      switcher: 'Layout View',
+      dashboard: 'Dashboard',
+      split: 'Split Workbench',
+      minimal: 'Minimal'
+    },
+    status: {
+      gatewayOnline: 'Gateway Online',
+      gatewayOffline: 'Gateway Offline',
+      gatewayConnecting: 'Connecting…',
+      latency: 'Latency',
+      activeProfile: 'Active Profile',
+      currentCwd: 'Workspace',
+      totalSessions: 'Total Sessions',
+      cronJobs: 'Cron Jobs',
+      activeModels: 'Active Model',
+      connected: 'Connected',
+      connecting: 'Connecting…',
+      disconnected: 'Disconnected',
+      isolatedRuntime: 'Isolated Runtime',
+      active: 'Active',
+      syncedGateway: 'Synced Gateway',
+      jobs: 'Jobs',
+      daemonReady: 'Daemon Ready'
+    },
+    charts: {
+      dailyActivity: 'Daily Token Throughput',
+      inputTokens: 'Input',
+      outputTokens: 'Output',
+      topModels: 'Model Distribution',
+      topSkills: 'Frequent Skills & Tools',
+      noData: 'No activity data yet',
+      sessionsCount: 'Sessions',
+      totalTokens: 'Total Tokens'
+    },
+    quickStart: {
+      title: 'Quick Goals',
+      troubleshoot: '🐞 Troubleshoot recent error and locate root cause',
+      optimize: '⚡ Diagnose performance bottlenecks and suggest fixes',
+      unitTest: '🧪 Write comprehensive unit tests for core module',
+      gitReview: '📦 Review recent Git diffs and generate commit msg',
+      explainArch: '🔍 Explain project architecture and control flow'
+    },
+    recentSessions: {
+      title: 'Recent Sessions',
+      empty: 'No recent sessions',
+      open: 'Open Session'
+    }
+  },
+  connections: {
+    title: 'Remote Gateways',
+    description: 'Every entry is an externally reachable Gateway. This app never starts or owns a local Gateway process.',
+    connectAnother: 'Connect another Gateway',
+    active: 'Active',
+    primary: 'Primary',
+    rename: 'Rename',
+    makePrimary: 'Make primary',
+    remove: 'Remove',
+    removeConfirm: (name: string) => `Remove saved Gateway "${name}"? Its credentials on this device will also be removed.`,
+    renamePrompt: 'Gateway display name',
+    empty: 'No saved Gateways.',
+    errors: {
+      load: 'Unable to load saved Gateways',
+      switch: 'Unable to switch Gateway',
+      remove: 'Unable to remove Gateway',
+      rename: 'Unable to rename Gateway',
+      primary: 'Unable to set primary Gateway'
+    }
   },
   skills: {
     title: 'Skills',

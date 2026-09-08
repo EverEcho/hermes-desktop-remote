@@ -34,7 +34,16 @@ interface Attachment {
   id: string
   name: string
   dataUrl: string
+  size?: number
 }
+
+const REFERENCE_PRESETS: api.PathCompletionItem[] = [
+  { text: '@file:', display: '@file (Remote file)', meta: 'reference' },
+  { text: '@folder:', display: '@folder (Remote directory)', meta: 'reference' },
+  { text: '@url:', display: '@url (Web URL)', meta: 'reference' },
+  { text: '@git:', display: '@git (Git review/branch)', meta: 'reference' },
+  { text: '@tool:', display: '@tool (Skill or toolset)', meta: 'reference' }
+]
 
 /* Same scale as Desktop (lib/reasoning-effort.ts): values are gateway enums,
  * labels are Desktop's short labels. `none` = thinking off. */
@@ -129,8 +138,17 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   )
   const [isDictating, setIsDictating] = useState(false)
   const [dictationHint, setDictationHint] = useState<string | null>(null)
+  const [audioMuted, setAudioMuted] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage.getItem('hermes_audio_muted') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [voiceModeActive, setVoiceModeActive] = useState(false)
   const [slashItems, setSlashItems] = useState<api.SlashCompletionItem[]>([])
   const [pathItems, setPathItems] = useState<api.PathCompletionItem[]>([])
+  const [completionIndex, setCompletionIndex] = useState(0)
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -204,7 +222,12 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     let cancelled = false
     const timer = window.setTimeout(() => {
       api.completeSlash(trimmed)
-        .then(result => { if (!cancelled) setSlashItems(result.items ?? []) })
+        .then(result => {
+          if (!cancelled) {
+            setSlashItems(result.items ?? [])
+            setCompletionIndex(0)
+          }
+        })
         .catch(() => { if (!cancelled) setSlashItems([]) })
     }, 150)
 
@@ -227,9 +250,25 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
     let cancelled = false
     const timer = window.setTimeout(() => {
+      const lowerQuery = query.toLowerCase()
+      const matchingPresets = REFERENCE_PRESETS.filter(preset =>
+        !lowerQuery || preset.text.toLowerCase().includes(lowerQuery) || preset.display?.toLowerCase().includes(lowerQuery)
+      )
+
       api.completePath(`@${query}`, { cwd: currentCwd || undefined, sessionId: activeSessionId ?? undefined })
-        .then(result => { if (!cancelled) setPathItems(result.items ?? []) })
-        .catch(() => { if (!cancelled) setPathItems([]) })
+        .then(result => {
+          if (!cancelled) {
+            const remoteItems = result.items ?? []
+            setPathItems([...matchingPresets, ...remoteItems])
+            setCompletionIndex(0)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setPathItems(matchingPresets)
+            setCompletionIndex(0)
+          }
+        })
     }, 150)
 
     return () => {
@@ -336,7 +375,48 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isSlashOpen = slashItems.length > 0
+    const isPathOpen = pathItems.length > 0
+
+    if (isSlashOpen || isPathOpen) {
+      const currentListLength = isSlashOpen ? slashItems.length : pathItems.length
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCompletionIndex(prev => (prev + 1) % currentListLength)
+        return
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCompletionIndex(prev => (prev - 1 + currentListLength) % currentListLength)
+        return
+      }
+
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault()
+        if (isSlashOpen && slashItems[completionIndex]) {
+          const item = slashItems[completionIndex]
+          setText(item.text.includes(' ') ? item.text : `${item.text} `)
+          setSlashItems([])
+          setCompletionIndex(0)
+        } else if (isPathOpen && pathItems[completionIndex]) {
+          choosePathReference(pathItems[completionIndex])
+          setCompletionIndex(0)
+        }
+        return
+      }
+
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setSlashItems([])
+        setPathItems([])
+        setCompletionIndex(0)
+        return
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       if (busy && !canSteer && canQueue) handleQueue()
@@ -355,15 +435,15 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     const match = text.match(/(?:^|\s)@([^\s]*)$/)
     if (!match) return
 
-    const isFolder = item.text.startsWith('@folder:')
+    const isPreset = item.meta === 'reference'
+    const isFolder = item.text.startsWith('@folder:') && !isPreset
     const prefixLength = isFolder ? '@folder:'.length : item.text.startsWith('@file:') ? '@file:'.length : 1
     const value = item.text.slice(prefixLength)
-    // A folder selection descends and keeps the popover open. Any other
-    // result is an executable Gateway reference and is inserted verbatim.
-    const replacement = isFolder ? `@${value.replace(/\/$/, '')}/` : item.text
+    const replacement = isPreset ? item.text : isFolder ? `@${value.replace(/\/$/, '')}/` : item.text
     const leadingSpace = match[0].startsWith(' ') ? ' ' : ''
-    setText(current => current.slice(0, current.length - match[0].length) + leadingSpace + replacement)
+    setText(current => current.slice(0, current.length - match[0].length) + leadingSpace + replacement + (isPreset ? '' : ' '))
     setPathItems([])
+    setCompletionIndex(0)
     window.setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
@@ -373,10 +453,30 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
       selected.map(async (file, i) => ({
         id: `att-${Date.now()}-${i}`,
         name: file.name,
+        size: file.size,
         dataUrl: await readFileAsDataUrl(file)
       }))
     )
     setAttachments(prev => [...prev, ...loaded])
+  }
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items
+    if (!items?.length) return
+
+    const files: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.kind === 'file') {
+        const file = item.getAsFile()
+        if (file) files.push(file)
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault()
+      void addAttachments(files)
+    }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -542,37 +642,53 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
       {/* Attachments Preview Row */}
       {attachments.length > 0 && (
         <div className="flex items-center gap-1.5 mb-2 overflow-x-auto no-scrollbar">
-          {attachments.map(att => (
-            <div
-              key={att.id}
-              className="flex items-center gap-1 px-2 py-1 rounded-md bg-(--ui-bg-card) border border-(--ui-stroke-tertiary) text-[0.7rem] text-(--ui-text-secondary)"
-            >
-              <Codicon name="file" className="text-xs text-(--ui-accent)" />
-              <span className="truncate max-w-[120px]">{att.name}</span>
-              <button
-                onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                className="text-(--ui-text-quaternary) hover:text-(--ui-red) ml-0.5"
+          {attachments.map(att => {
+            const isImg = att.dataUrl.startsWith('data:image/')
+            const sizeLabel = att.size ? ` (${(att.size / 1024).toFixed(0)}KB)` : ''
+
+            return (
+              <div
+                key={att.id}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-(--ui-bg-card) border border-(--ui-stroke-tertiary) text-[0.7rem] text-(--ui-text-secondary) shadow-xs"
               >
-                <Codicon name="close" className="text-[0.65rem]" />
-              </button>
-            </div>
-          ))}
+                {isImg ? (
+                  <img alt={att.name} className="size-5 rounded object-cover border border-(--ui-stroke-quaternary)" src={att.dataUrl} />
+                ) : (
+                  <Codicon name="file" className="text-xs text-(--ui-accent)" />
+                )}
+                <span className="truncate max-w-[130px]" title={att.name}>{att.name}{sizeLabel}</span>
+                <button
+                  onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
+                  className="text-(--ui-text-quaternary) hover:text-(--ui-red) ml-0.5"
+                  title="Remove attachment"
+                  type="button"
+                >
+                  <Codicon name="close" className="text-[0.65rem]" />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 
       {/* Slash Command Completions */}
       {slashItems.length > 0 && (
         <div className="absolute bottom-full left-3 right-3 mb-1 max-h-[40vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) shadow-(--shadow-nous) p-1.5 z-50">
-          {slashItems.map(item => (
+          {slashItems.map((item, index) => (
             <button
               key={item.text}
               type="button"
+              onMouseEnter={() => setCompletionIndex(index)}
               onClick={() => {
                 setText(item.text.includes(' ') ? item.text : `${item.text} `)
                 setSlashItems([])
+                setCompletionIndex(0)
                 textareaRef.current?.focus()
               }}
-              className="w-full flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded-lg text-left hover:bg-(--chrome-action-hover) active:bg-(--chrome-action-hover) transition-colors"
+              className={cn(
+                'w-full flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded-lg text-left transition-colors',
+                index === completionIndex ? 'bg-(--ui-row-active-background)' : 'hover:bg-(--chrome-action-hover)'
+              )}
             >
               <span className="font-mono text-[0.7rem] text-(--ui-accent) font-medium truncate max-w-full">
                 {item.display ?? item.text}
@@ -589,19 +705,32 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
       {pathItems.length > 0 && (
         <div className="absolute bottom-full left-3 right-3 mb-1 max-h-[40vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) shadow-(--shadow-nous) p-1.5 z-50">
-          <div className="px-2.5 py-1 text-[0.625rem] font-medium uppercase tracking-wide text-(--ui-text-quaternary)">Remote workspace</div>
+          <div className="px-2.5 py-1 text-[0.625rem] font-medium uppercase tracking-wide text-(--ui-text-quaternary)">Remote workspace references</div>
           {pathItems.map((item, index) => {
             const folder = item.text.startsWith('@folder:')
             const label = item.display || item.text.replace(/^@(file|folder):/, '')
+            const iconName = item.text.startsWith('@git')
+              ? 'git-branch'
+              : item.text.startsWith('@tool')
+              ? 'tools'
+              : item.text.startsWith('@url')
+              ? 'globe'
+              : folder
+              ? 'folder'
+              : 'file'
 
             return (
               <button
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-(--chrome-action-hover) active:bg-(--chrome-action-hover)"
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors',
+                  index === completionIndex ? 'bg-(--ui-row-active-background)' : 'hover:bg-(--chrome-action-hover)'
+                )}
                 key={`${item.text}-${index}`}
+                onMouseEnter={() => setCompletionIndex(index)}
                 onClick={() => choosePathReference(item)}
                 type="button"
               >
-                <Codicon className="shrink-0 text-xs text-(--ui-accent)" name={folder ? 'folder' : 'file'} />
+                <Codicon className="shrink-0 text-xs text-(--ui-accent)" name={iconName} />
                 <span className="min-w-0 flex-1 truncate font-mono text-[0.7rem] text-(--ui-text-primary)">{label}</span>
                 <span className="shrink-0 text-[0.625rem] text-(--ui-text-quaternary)">{item.meta || (folder ? 'folder' : 'file')}</span>
               </button>
@@ -652,6 +781,7 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           onInput={handleInput}
           placeholder={connected ? placeholder : t.composer.placeholderConnecting}
           rows={1}
@@ -669,9 +799,9 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           <button
             type="button"
             onClick={() => setShowModelPicker(!showModelPicker)}
-            className="flex items-center gap-0.5 px-1.5 py-1 rounded-md text-[0.7rem] text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-chrome) transition-colors font-medium whitespace-nowrap"
+            className="flex items-center gap-0.5 px-1 py-1 rounded-md text-[0.7rem] text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-chrome) transition-colors font-medium whitespace-nowrap"
           >
-            <span className="max-w-[8.5rem] truncate">
+            <span className="max-w-[4.5rem] sm:max-w-[8.5rem] truncate">
               {displayModelName}{pillMeta ? ` · ${pillMeta}` : ''}
             </span>
             <Codicon name="chevron-down" className="text-[0.6rem] text-(--ui-text-quaternary)" />
@@ -813,6 +943,42 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           title={t.composer.dictation}
         >
           <Codicon name="mic" className="text-sm" />
+        </button>
+
+        {/* 5. Audio Playback Mute / Unmute Button */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = !audioMuted
+            setAudioMuted(next)
+            try {
+              window.localStorage.setItem('hermes_audio_muted', String(next))
+            } catch {
+              // ignore
+            }
+          }}
+          className={cn(
+            'p-1 rounded-md shrink-0 transition-colors',
+            audioMuted ? 'text-(--ui-text-quaternary)' : 'text-(--ui-text-tertiary) hover:text-(--ui-text-primary)'
+          )}
+          title={audioMuted ? '语音朗读已静音 (点击开启)' : '语音朗读已开启 (点击静音)'}
+        >
+          <Codicon name={audioMuted ? 'mute' : 'unmute'} className="text-sm" />
+        </button>
+
+        {/* 6. Voice Wave Activity / Mode Button */}
+        <button
+          type="button"
+          onClick={() => setVoiceModeActive(!voiceModeActive)}
+          className={cn(
+            'p-1 rounded-md shrink-0 transition-colors',
+            voiceModeActive
+              ? 'bg-(--ui-accent)/15 text-(--ui-accent) animate-pulse'
+              : 'text-(--ui-text-tertiary) hover:text-(--ui-text-primary)'
+          )}
+          title={voiceModeActive ? '退出实时语音模式' : '进入实时语音通话模式'}
+        >
+          <Codicon name="radio-tower" className="text-sm" />
         </button>
 
         {/* 5. Circular Primary Button (Send / Stop) — matches Desktop */}

@@ -10,7 +10,8 @@ export const zh: Catalog = {
     delete: '删除',
     save: '保存',
     saving: '保存中…',
-    refresh: '刷新'
+    refresh: '刷新',
+    cancel: '取消'
   },
   errors: {
     diskFull: '磁盘已满 — 请腾出一些空间后再试。'
@@ -30,7 +31,87 @@ export const zh: Catalog = {
     openWorkspace: '打开工作区',
     gatewayConnected: '网关已连接',
     reconnectGateway: '重新连接网关',
-    refreshFiles: '刷新文件列表'
+    refreshFiles: '刷新文件列表',
+    commands: {
+      searchPlaceholder: '搜索命令…',
+      noMatches: '未找到匹配的命令',
+      newSession: '新建会话',
+      newProjectSession: '新建项目会话',
+      newProjectSessionDesc: '选择已连接网关上的工作目录',
+      hideLeftSidebar: '隐藏左侧栏',
+      showLeftSidebar: '显示左侧栏',
+      openSettings: '打开设置',
+      openSkills: '打开技能与工具',
+      browseArtifacts: '浏览产物',
+      browseArtifactsDesc: '跨会话生成的文件与链接',
+      viewAgents: '查看智能体',
+      viewAgentsDesc: '监控网关子代理任务',
+      memoryCurator: '记忆与维护',
+      memoryCuratorDesc: '管理网关长期记忆与技能维护',
+      learningMap: '学习图谱',
+      learningMapDesc: '浏览已学习的技能与经验',
+      gatewayLogs: '网关日志',
+      gatewayLogsDesc: '查看远程网关诊断与实时日志',
+      computerUse: '电脑操作',
+      computerUseDesc: '检查网关主机屏幕与辅助功能权限',
+      manageGateways: '管理远程网关',
+      manageGatewaysDesc: '切换或管理已保存的网关连接',
+      archivedSessions: '已归档会话',
+      archivedSessionsDesc: '恢复或清理已归档的会话记录',
+      manageProfiles: '管理配置文件',
+      manageWebhooks: '管理 Webhooks',
+      remoteTerminal: '远程终端',
+      remoteTerminalDesc: '选择执行后端并查看实时终端输出',
+      openMessaging: '打开消息平台',
+      openCron: '打开定时任务',
+      connectAnotherGateway: '连接其他网关',
+      openWorkspace: '打开工作区',
+      hideFileList: '隐藏文件列表',
+      showFileList: '显示文件列表'
+    },
+    sessionPicker: {
+      searchPlaceholder: '搜索会话…',
+      noMatches: '未找到匹配的会话',
+      untitled: '未命名会话'
+    },
+    statusbar: {
+      commandPalette: '命令面板 (⌘K)',
+      gatewaySwitch: '网关连接与切换',
+      remoteGateway: '远程网关',
+      connectedWithPing: (ms: number) => `已连接 (${ms}ms 延迟)`,
+      connecting: '连接中…',
+      offline: '离线',
+      reconnect: '重新连接网关',
+      switchGateway: '更换网关地址…',
+      gateway: '网关',
+      ready: '就绪',
+      notReady: '未就绪',
+      workspaceTitle: (cwd: string) => `工作空间: ${cwd} (点击复制路径)`,
+      copied: '已复制!',
+      proxy: '代理',
+      proxyTip: '代理与网络连接配置',
+      cron: '排程',
+      cronTip: '定时任务与排程管理',
+      webhooks: 'Webhook',
+      webhooksTip: 'Webhook 接收与触发管理',
+      agents: '智能体',
+      agentsTip: '智能体与子代理管理',
+      approvalMode: {
+        title: '审批模式',
+        ariaLabel: (mode: string) => `审批模式：${mode}`,
+        manual: '手动',
+        manualDescription: '执行需要审批的操作前询问',
+        smart: '智能',
+        smartDescription: '自动评估操作，并在需要时询问',
+        off: '关闭',
+        offDescription: '不显示审批提示，直接运行'
+      },
+      session: '会话',
+      contextUsage: '上下文',
+      terminal: '终端',
+      clientVersion: '客户端',
+      backendVersion: '后端'
+    }
   },
   sidebar: {
     newSession: '新建会话',
@@ -410,9 +491,77 @@ export const zh: Catalog = {
   },
   home: {
     tagline: '告诉我你在做什么 · 重构、小工具，还是庞大的仓库，我都乐意帮忙',
-    placeholder: '从一个目标开始',
+    placeholder: '我们该处理什么？',
     startFailed: '无法开始对话，请检查网关连接后重试。',
-    start: '开始对话'
+    start: '开始对话',
+    layout: {
+      switcher: '布局视图',
+      dashboard: '仪表盘',
+      split: '双栏工作台',
+      minimal: '极简聚焦'
+    },
+    status: {
+      gatewayOnline: '网关在线',
+      gatewayOffline: '网关离线',
+      gatewayConnecting: '连接中…',
+      latency: '延迟',
+      activeProfile: '活动 Profile',
+      currentCwd: '工作空间',
+      totalSessions: '会话总数',
+      cronJobs: '定时任务',
+      activeModels: '活动模型',
+      connected: '已连接',
+      connecting: '连接中…',
+      disconnected: '已断开',
+      isolatedRuntime: '隔离运行环境',
+      active: '活跃',
+      syncedGateway: '已同步网关',
+      jobs: '任务',
+      daemonReady: '后台就绪'
+    },
+    charts: {
+      dailyActivity: '每日 Token 吞吐趋势',
+      inputTokens: '输入 (Input)',
+      outputTokens: '输出 (Output)',
+      topModels: '模型用量分布',
+      topSkills: '高频工具与技能',
+      noData: '暂无活动数据',
+      sessionsCount: '会话',
+      totalTokens: '总 Token'
+    },
+    quickStart: {
+      title: '快捷任务',
+      troubleshoot: '🐞 排查最近代码报错并定位根因',
+      optimize: '⚡ 诊断性能瓶颈并提供优化建议',
+      unitTest: '🧪 为核心模块编写完整单元测试',
+      gitReview: '📦 审查最近 Git 变更并生成 Commit 建议',
+      explainArch: '🔍 深入解析当前工程代码架构与核心流'
+    },
+    recentSessions: {
+      title: '最近活跃会话',
+      empty: '暂无最近会话',
+      open: '打开会话'
+    }
+  },
+  connections: {
+    title: '远程网关',
+    description: '每一项都是可从外部访问的网关。本应用从不启动或拥有本地网关进程。',
+    connectAnother: '连接其他网关',
+    active: '当前',
+    primary: '主网关',
+    rename: '重命名',
+    makePrimary: '设为主网关',
+    remove: '移除',
+    removeConfirm: (name: string) => `确定要移除已保存的网关 "${name}" 吗？该设备上的凭据也会一并删除。`,
+    renamePrompt: '网关显示名称',
+    empty: '暂无已保存的网关。',
+    errors: {
+      load: '无法加载已保存的网关',
+      switch: '无法切换网关',
+      remove: '无法移除网关',
+      rename: '无法重命名网关',
+      primary: '无法设置主网关'
+    }
   },
   skills: {
     title: '技能',

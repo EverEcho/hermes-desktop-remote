@@ -333,6 +333,60 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     padding: 0 5px;
   }
 
+  html[data-surface='desktop'] .desktop-preview-tabs {
+    display: flex;
+    min-height: 28px;
+    flex: 0 0 auto;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--ui-stroke-tertiary);
+    background: var(--ui-bg-chrome);
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab {
+    display: flex;
+    min-width: 0;
+    max-width: 9rem;
+    align-items: center;
+    gap: 2px;
+    border-right: 1px solid var(--ui-stroke-tertiary);
+    color: var(--ui-text-quaternary);
+    font-size: 0.64rem;
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab.is-active {
+    background: var(--ui-bg-sidebar);
+    color: var(--ui-text-primary);
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab-tree {
+    padding: 0 8px;
+    gap: 5px;
+    cursor: pointer;
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab > button:first-child {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    padding: 7px 4px 7px 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab > button:last-child {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 3px;
+  }
+
+  html[data-surface='desktop'] .desktop-preview-tab > button:last-child:hover {
+    background: var(--chrome-action-hover);
+  }
+
   html[data-surface='desktop'] .desktop-workspace-root {
     display: flex;
     min-width: 0;
@@ -397,6 +451,52 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     user-select: text;
     white-space: pre-wrap;
   }
+
+  html[data-surface='desktop'] .desktop-url-preview {
+    min-height: 0;
+    width: 100%;
+    flex: 1;
+    border: 0;
+    background: white;
+  }
+
+  html[data-surface='desktop'] .desktop-media-preview {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    place-items: center;
+    overflow: auto;
+    padding: 12px;
+    background: color-mix(in srgb, var(--ui-bg-chrome) 88%, #000);
+  }
+
+  html[data-surface='desktop'] .desktop-media-preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    user-select: none;
+  }
+
+  html[data-surface='desktop'] .desktop-markdown-preview {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 12px;
+    color: var(--ui-text-secondary);
+    font-size: 0.72rem;
+    line-height: 1.55;
+    user-select: text;
+  }
+
+  html[data-surface='desktop'] .desktop-markdown-preview p { margin: 0; white-space: pre-wrap; }
+  html[data-surface='desktop'] .desktop-markdown-gap { height: 0.55rem; }
+  html[data-surface='desktop'] .desktop-markdown-heading { color: var(--ui-text-primary); font-weight: 700; }
+  html[data-surface='desktop'] .desktop-markdown-heading.h1 { margin-top: 0.5rem; font-size: 1rem; }
+  html[data-surface='desktop'] .desktop-markdown-heading.h2 { margin-top: 0.45rem; font-size: 0.87rem; }
+  html[data-surface='desktop'] .desktop-markdown-heading.h3 { margin-top: 0.35rem; font-size: 0.78rem; }
+  html[data-surface='desktop'] .desktop-markdown-list { padding-left: 0.4rem; white-space: pre-wrap; }
+  html[data-surface='desktop'] .desktop-markdown-fence { margin-top: 0.35rem; color: var(--ui-text-quaternary); font-family: var(--dt-font-mono); font-size: 0.6rem; }
+  html[data-surface='desktop'] .desktop-markdown-code { margin: 0; overflow-x: auto; padding: 1px 4px; background: var(--ui-bg-quaternary); color: var(--ui-text-secondary); font-family: var(--dt-font-mono); font-size: 0.66rem; }
 
   html[data-surface='desktop'] .desktop-file-editor {
     min-height: 0;

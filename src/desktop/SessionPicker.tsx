@@ -4,6 +4,7 @@ import type { SessionInfo } from '@/types/hermes'
 import * as api from '@/gateway/api'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 interface DesktopSessionPickerProps {
   activeSessionId: string | null
@@ -17,6 +18,7 @@ interface DesktopSessionPickerProps {
  * session index. It does not own session data, so profile and connection
  * changes naturally replace its rows through the shared store. */
 export function DesktopSessionPicker({ activeSessionId, onClose, onOpen, open, sessions }: DesktopSessionPickerProps) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [remoteMatches, setRemoteMatches] = useState<SessionInfo[] | null>(null)
@@ -116,7 +118,7 @@ export function DesktopSessionPicker({ activeSessionId, onClose, onOpen, open, s
                 choose(matches[selectedIndex])
               }
             }}
-            placeholder="Search conversations…"
+            placeholder={t.desktop.sessionPicker.searchPlaceholder}
             ref={inputRef}
             value={query}
           />
@@ -125,7 +127,7 @@ export function DesktopSessionPicker({ activeSessionId, onClose, onOpen, open, s
         <div className="max-h-[50vh] overflow-y-auto p-1.5 no-scrollbar">
           {matches.length ? matches.map((session, index) => {
             const id = session._lineage_root_id ?? session.id
-            const title = session.title?.trim() || 'Untitled conversation'
+            const title = session.title?.trim() || t.desktop.sessionPicker.untitled
             const meta = session.cwd?.split('/').filter(Boolean).pop() || session.preview || ''
 
             return (
@@ -150,7 +152,7 @@ export function DesktopSessionPicker({ activeSessionId, onClose, onOpen, open, s
               </button>
             )
           }) : (
-            <div className="px-3 py-8 text-center text-xs text-(--ui-text-quaternary)">No matching conversations</div>
+            <div className="px-3 py-8 text-center text-xs text-(--ui-text-quaternary)">{t.desktop.sessionPicker.noMatches}</div>
           )}
         </div>
       </div>

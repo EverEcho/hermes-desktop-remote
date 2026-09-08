@@ -1085,6 +1085,18 @@ export function fsReadText(filePath: string): Promise<{ content: string }> {
   return apiRequest<{ content: string }>(`/api/fs/read-text?path=${encodeURIComponent(filePath)}`)
 }
 
+/** Read a small remote binary through the authenticated Gateway bridge. The
+ * returned data URL is safe to hand to an image/PDF preview and never exposes
+ * a client-local `file:` path. */
+export async function fsReadDataUrl(filePath: string): Promise<string> {
+  const result = await apiRequest<string | { dataUrl?: string }>(
+    `/api/fs/read-data-url?path=${encodeURIComponent(filePath)}`
+  )
+  const dataUrl = typeof result === 'string' ? result : result.dataUrl ?? ''
+  if (!dataUrl.startsWith('data:')) throw new Error('Gateway did not return a file preview')
+  return dataUrl
+}
+
 export function fsWriteText(filePath: string, content: string): Promise<{ ok: boolean }> {
   return apiRequest<{ ok: boolean }>('/api/fs/write-text', {
     method: 'POST',
