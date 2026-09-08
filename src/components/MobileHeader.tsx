@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n'
 import type { MobileConnectionState } from '@/gateway'
 
 interface MobileHeaderProps {
+  className?: string
   title?: string
   subtitle?: string
   onMenuPress?: () => void
@@ -16,6 +17,7 @@ interface MobileHeaderProps {
 }
 
 export function MobileHeader({
+  className,
   title,
   subtitle,
   onMenuPress,
@@ -30,7 +32,8 @@ export function MobileHeader({
       className={cn(
         'flex items-center gap-1 px-2 shrink-0',
         'bg-(--ui-bg-chrome) border-b border-(--ui-stroke-tertiary)',
-        'pt-[var(--safe-area-top)]'
+        'pt-[var(--safe-area-top)]',
+        className
       )}
       style={{ height: 'calc(2.5rem + var(--safe-area-top))' }}
     >

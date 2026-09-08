@@ -1,8 +1,8 @@
 # RHermes
 
-RHermes is a mobile-first iOS, Android, and Web client for an already-running
-Hermes Gateway. The repository contains only the client; it does not bundle or
-start the Python agent, CLI, TUI, or Gateway.
+RHermes is a mobile-first iOS, Android, macOS, Windows, Linux, and Web client
+for an already-running Hermes Gateway. The repository contains only the
+client; it does not bundle or start the Python agent, CLI, TUI, or Gateway.
 
 ## Requirements
 
@@ -10,6 +10,7 @@ start the Python agent, CLI, TUI, or Gateway.
 - A reachable Hermes Gateway
 - Xcode for iOS builds
 - Android Studio, Android SDK, and JDK for Android builds
+- Rust and the current platform's Tauri prerequisites for desktop builds
 
 ## Development
 
@@ -44,15 +45,29 @@ Open the generated projects with `npm run cap:ios` or
 `npm run cap:android`. Native version numbers, signing, store metadata, and
 store update integration live in those projects.
 
+## Desktop with Tauri
+
+The desktop app uses the Capawesome Capacitor Tauri platform, so it shares the
+same Capacitor runtime and frontend as iOS and Android. `Capacitor.getPlatform()`
+returns `tauri` in desktop builds.
+
+```bash
+npm run cap:tauri
+npm run tauri:build
+```
+
+`tauri:build` builds the frontend, synchronizes it into `src-tauri/`, and
+creates the native installer for the current operating system. Tauri uses the
+system webview and does not bundle the local Hermes Gateway or Python agent.
+
 ## Web deployment
 
 `npm run build` writes the static app to `dist/`. See
 [`doc/mobile-h5-nginx-deployment.md`](doc/mobile-h5-nginx-deployment.md) for a
 same-origin Gateway proxy example.
 
-The Web build can also be installed as a desktop PWA. Capacitor does not create
-native macOS, Windows, or Linux applications; native desktop packaging would
-require a separate Electron or Tauri shell.
+The Web build can also be installed as a desktop PWA. Native desktop packages
+are produced by the Tauri platform under `src-tauri/`.
 
 ## Distribution
 

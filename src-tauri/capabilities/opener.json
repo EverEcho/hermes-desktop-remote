@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "external-links",
+  "description": "Allow the main window to open HTTP and HTTPS links in the system browser.",
+  "windows": ["main"],
+  "permissions": ["opener:default"]
+}

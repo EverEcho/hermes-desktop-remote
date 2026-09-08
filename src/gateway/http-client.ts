@@ -1,4 +1,5 @@
 import { getAccessToken } from '@/auth'
+import { gatewayFetch } from './fetch'
 import { gatewayTargetHeaders, resolveGatewayRequestUrl } from './request-url'
 
 export class ApiError extends Error {
@@ -91,7 +92,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
-    const response = await fetch(url, {
+    const response = await gatewayFetch(url, {
       method,
       headers: { ...headers, ...gatewayTargetHeaders(_configuredGatewayUrl) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -138,7 +139,7 @@ export async function apiUpload<T>(
   const formData = new FormData()
   formData.append('file', new Blob([data], { type: contentType }), filename)
 
-  const response = await fetch(url, {
+  const response = await gatewayFetch(url, {
     method: 'POST',
     headers: { ...headers, ...gatewayTargetHeaders(_configuredGatewayUrl) },
     credentials: _authMode === 'cookie' ? 'include' : 'same-origin',

@@ -4,6 +4,7 @@ import { atom } from 'nanostores'
 import { getWsTicket, $authState } from '@/auth'
 import { getGatewayBaseUrl, setActiveProfile } from './http-client'
 import { gatewayTargetHeaders } from './request-url'
+import { gatewayFetch } from './fetch'
 
 /**
  * Obtain a one-time WS ticket using cookie authentication.
@@ -11,7 +12,7 @@ import { gatewayTargetHeaders } from './request-url'
  * so we can request a ticket via a normal fetch with `credentials: 'include'`.
  */
 async function getCookieWsTicket(baseUrl: string, gatewayUrl: string): Promise<string> {
-  const response = await fetch(`${baseUrl}/api/auth/ws-ticket`, {
+  const response = await gatewayFetch(`${baseUrl}/api/auth/ws-ticket`, {
     method: 'POST',
     credentials: 'include',
     headers: { ...gatewayTargetHeaders(gatewayUrl) }

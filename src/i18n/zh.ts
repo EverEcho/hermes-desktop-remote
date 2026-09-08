@@ -22,6 +22,16 @@ export const zh: Catalog = {
     signIn: '登录',
     retry: '重试'
   },
+  desktop: {
+    showLeftSidebar: '显示左侧栏',
+    hideLeftSidebar: '隐藏左侧栏',
+    showFileList: '显示文件列表',
+    hideFileList: '隐藏文件列表',
+    openWorkspace: '打开工作区',
+    gatewayConnected: '网关已连接',
+    reconnectGateway: '重新连接网关',
+    refreshFiles: '刷新文件列表'
+  },
   sidebar: {
     newSession: '新建会话',
     skills: '技能与工具',

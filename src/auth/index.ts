@@ -24,6 +24,10 @@ import {
   type StoredConnection
 } from './token-store'
 import { gatewayTargetHeaders, resolveGatewayRequestUrl } from '@/gateway/request-url'
+import { gatewayFetch } from '@/gateway/fetch'
+import { isTauriPlatform, openExternalUrl } from '@/native'
+
+type TauriUnlisten = () => void
 
 export type AuthState =
   | { status: 'unknown' }
@@ -42,6 +46,8 @@ interface LoginTransaction {
   gatewayUrl: string
   profile: string
   listener: { remove: () => Promise<void> } | null
+  tauriUnlisten: TauriUnlisten | null
+  redirectUri: string | null
   timeout: ReturnType<typeof setTimeout> | null
   settled: boolean
 }
@@ -58,6 +64,18 @@ function cleanupLoginTransaction(): void {
   if (activeLogin.listener) {
     void activeLogin.listener.remove()
     activeLogin.listener = null
+  }
+
+  if (activeLogin.tauriUnlisten) {
+    activeLogin.tauriUnlisten()
+    activeLogin.tauriUnlisten = null
+  }
+
+  if (isTauriPlatform()) {
+    const expectedState = activeLogin.pkce.state
+    void import('@tauri-apps/api/core').then(({ invoke }) =>
+      invoke('cancel_oauth_loopback', { expectedState }).catch(() => {})
+    )
   }
 
   if (activeLogin.timeout) {
@@ -148,25 +166,53 @@ export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): 
       gatewayUrl,
       profile,
       listener: null,
+      tauriUnlisten: null,
+      redirectUri: null,
       timeout: null,
       settled: false
     }
 
     activeLogin = tx
 
-    tx.listener = await App.addListener('appUrlOpen', ({ url }) => {
-      void handleOAuthCallback(url)
-    })
+    if (isTauriPlatform()) {
+      const [{ invoke }, { listen }] = await Promise.all([
+        import('@tauri-apps/api/core'),
+        import('@tauri-apps/api/event')
+      ])
+      tx.tauriUnlisten = await listen<string>('oauth-loopback-callback', ({ payload }) => {
+        void handleOAuthCallback(payload)
+      })
+      tx.redirectUri = await invoke<string>('start_oauth_loopback', {
+        expectedState: pkce.state
+      })
+    } else {
+      tx.listener = await App.addListener('appUrlOpen', ({ url }) => {
+        void handleOAuthCallback(url)
+      })
+    }
 
     tx.timeout = setTimeout(() => {
       if (activeLogin === tx && !tx.settled) {
         cleanupLoginTransaction()
         $authState.set({ status: 'error', message: 'Login timed out — try again.' })
       }
-    }, 120_000)
+    }, 300_000)
 
-    const authUrl = buildAuthorizeUrl(gatewayUrl, pkce.challenge, pkce.state)
-    await Browser.open({ url: authUrl })
+    const authUrl = buildAuthorizeUrl(
+      gatewayUrl,
+      pkce.challenge,
+      pkce.state,
+      tx.redirectUri ?? undefined
+    )
+    if (isTauriPlatform() && tx.redirectUri) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('open_oauth_webview', {
+        authorizeUrl: authUrl,
+        redirectUri: tx.redirectUri
+      })
+    } else {
+      await openExternalUrl(authUrl)
+    }
   } catch (error) {
     cleanupLoginTransaction()
     $authState.set({
@@ -183,7 +229,7 @@ async function handleOAuthCallback(url: string): Promise<void> {
     return
   }
 
-  const callback = parseOAuthCallback(url)
+  const callback = parseOAuthCallback(url, tx.redirectUri ?? undefined)
 
   if (!callback) {
     return
@@ -240,7 +286,7 @@ export async function loginWithToken(
     const base = resolveGatewayRequestUrl(gatewayUrl)
     // /api/status is public, so a 200 there says nothing about the supplied
     // token. Validate against a protected endpoint before persisting it.
-    const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
+    const response = await gatewayFetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
       headers: { 'X-Hermes-Session-Token': token, ...gatewayTargetHeaders(gatewayUrl) }
     })
 
@@ -274,7 +320,7 @@ export async function loginWithCookie(gatewayUrl: string, profile = 'default'): 
 
 async function verifyCookieSession(gatewayUrl: string): Promise<void> {
   const base = resolveGatewayRequestUrl(gatewayUrl)
-  const response = await fetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
+  const response = await gatewayFetch(`${base}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, {
     credentials: 'include',
     headers: gatewayTargetHeaders(gatewayUrl)
   })
@@ -392,7 +438,7 @@ export async function checkGatewayStatus(
   gatewayUrl: string
 ): Promise<{ authMode: 'oauth' | 'token'; providers: Array<{ name: string; displayName: string; supportsPassword: boolean }> }> {
   const base = resolveGatewayRequestUrl(gatewayUrl)
-  const response = await fetch(`${base}/api/status`, { headers: gatewayTargetHeaders(gatewayUrl) })
+  const response = await gatewayFetch(`${base}/api/status`, { headers: gatewayTargetHeaders(gatewayUrl) })
 
   if (!response.ok) {
     throw new Error(`Gateway unreachable (${response.status})`)
@@ -407,7 +453,7 @@ export async function checkGatewayStatus(
 
   if (authMode === 'oauth') {
     try {
-      const providerResponse = await fetch(`${base}/api/auth/providers`, { headers: gatewayTargetHeaders(gatewayUrl) })
+      const providerResponse = await gatewayFetch(`${base}/api/auth/providers`, { headers: gatewayTargetHeaders(gatewayUrl) })
       const providerBody = (await providerResponse.json()) as { providers?: Array<Record<string, unknown>> }
       providers = (providerBody.providers ?? [])
         .filter(provider => typeof provider?.name === 'string' && provider.name)

@@ -6,6 +6,7 @@ import { Button, Spinner } from '@/ui/Button'
 import { Input } from '@/ui/Input'
 import { isNativePlatform } from '@/native'
 import { gatewayTargetHeaders, resolveGatewayRequestUrl } from '@/gateway/request-url'
+import { gatewayFetch } from '@/gateway/fetch'
 import { useI18n } from '@/i18n'
 
 interface LoginScreenProps {
@@ -108,14 +109,14 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
     setTesting(true); setActionError(null); setSuccess(null); setTested(false)
     try {
       if (authMode === 'cookie') {
-        const response = await fetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { credentials: 'include', headers: gatewayTargetHeaders(url) })
+        const response = await gatewayFetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { credentials: 'include', headers: gatewayTargetHeaders(url) })
         if (!response.ok) throw new Error(t.login.testFailedCode(response.status))
         // A successful cookie probe is the browser-login completion signal.
         // Persist the connection state immediately so the Authentication row
         // changes to "Connected" before the user applies the connection.
         await loginWithCookie(url)
       } else if (authMode === 'token') {
-        const response = await fetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { headers: { 'X-Hermes-Session-Token': remoteToken.trim(), ...gatewayTargetHeaders(url) } })
+        const response = await gatewayFetch(`${resolveGatewayRequestUrl(url)}/api/sessions?limit=1&offset=0&min_messages=1&archived=exclude&order=recent`, { headers: { 'X-Hermes-Session-Token': remoteToken.trim(), ...gatewayTargetHeaders(url) } })
         if (!response.ok) throw new Error(t.login.testFailedCode(response.status))
       }
       setSuccess(t.login.connectedTo(url))

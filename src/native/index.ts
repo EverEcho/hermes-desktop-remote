@@ -10,9 +10,28 @@ export function isNativePlatform(): boolean {
   return Capacitor.isNativePlatform()
 }
 
+export function isMobileNativePlatform(): boolean {
+  const platform = Capacitor.getPlatform()
+  return platform === 'ios' || platform === 'android'
+}
+
+export function isTauriPlatform(): boolean {
+  return Capacitor.getPlatform() === 'tauri'
+}
+
 /* External links open in a popup browser (Capacitor in-app browser sheet on
  * native, new tab on H5) instead of redirecting the app's own webview. */
 export async function openExternalUrl(url: string): Promise<void> {
+  if (Capacitor.getPlatform() === 'tauri') {
+    try {
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(url)
+      return
+    } catch {
+      // fall through to the browser implementation
+    }
+  }
+
   if (isNativePlatform()) {
     try {
       await Browser.open({ url })
@@ -26,7 +45,7 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function initializeNativeAdapters(): Promise<void> {
-  if (!isNativePlatform()) {
+  if (!isMobileNativePlatform()) {
     return
   }
 
@@ -45,7 +64,7 @@ export async function initializeNativeAdapters(): Promise<void> {
 }
 
 export async function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'light'): Promise<void> {
-  if (!isNativePlatform()) {
+  if (!isMobileNativePlatform()) {
     return
   }
 
@@ -59,7 +78,7 @@ export async function hapticImpact(style: 'light' | 'medium' | 'heavy' = 'light'
 }
 
 export async function hapticNotification(type: 'success' | 'warning' | 'error'): Promise<void> {
-  if (!isNativePlatform()) {
+  if (!isMobileNativePlatform()) {
     return
   }
 
@@ -107,7 +126,7 @@ export function onNetworkChange(callback: (connected: boolean) => void): () => v
 }
 
 export function onKeyboardHeightChange(callback: (height: number) => void): () => void {
-  if (!isNativePlatform()) {
+  if (!isMobileNativePlatform()) {
     return () => {}
   }
 

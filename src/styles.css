@@ -178,6 +178,186 @@ html, body, #root {
   overscroll-behavior: none;
 }
 
+.tauri-titlebar {
+  display: none;
+}
+
+html[data-platform='tauri'][data-desktop-os='macos'] {
+  --tauri-titlebar-height: 36px;
+}
+
+html[data-platform='tauri'][data-desktop-os='macos'] #root {
+  padding-top: var(--tauri-titlebar-height);
+}
+
+html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: block;
+  height: var(--tauri-titlebar-height);
+  background: var(--ui-bg-chrome);
+  cursor: default;
+  user-select: none;
+}
+
+.desktop-titlebar,
+.desktop-workspace-panel {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  html[data-platform='tauri'] .app-mobile-header {
+    display: none;
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar {
+    position: fixed;
+    z-index: 1001;
+    top: 0;
+    right: 0;
+    left: 0;
+    display: flex;
+    height: var(--tauri-titlebar-height, 36px);
+    align-items: center;
+    gap: 1px;
+    border-bottom: 1px solid var(--ui-stroke-tertiary);
+    background: color-mix(in srgb, var(--ui-bg-chrome) 94%, transparent);
+    padding: 0 6px;
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar-traffic-spacer {
+    width: 70px;
+    height: 100%;
+    flex: 0 0 auto;
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar-title {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    color: var(--ui-text-secondary);
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar-button,
+  html[data-platform='tauri'] .desktop-titlebar-connection,
+  html[data-platform='tauri'] .desktop-workspace-action {
+    display: grid;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 4px;
+    color: var(--ui-text-tertiary);
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar-button:hover,
+  html[data-platform='tauri'] .desktop-titlebar-connection:hover,
+  html[data-platform='tauri'] .desktop-workspace-action:hover,
+  html[data-platform='tauri'] .desktop-titlebar-button.is-active {
+    background: var(--chrome-action-hover);
+    color: var(--ui-text-primary);
+  }
+
+  html[data-platform='tauri'] .desktop-titlebar-button:disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  html[data-platform='tauri'] .desktop-workspace-panel {
+    display: flex;
+    width: 17rem;
+    min-width: 12rem;
+    max-width: 24rem;
+    flex: 0 0 auto;
+    flex-direction: column;
+    border-left: 1px solid var(--ui-stroke-tertiary);
+    background: var(--ui-bg-sidebar);
+  }
+
+  html[data-platform='tauri'] .desktop-workspace-header {
+    display: flex;
+    height: 34px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+    border-bottom: 1px solid var(--ui-stroke-tertiary);
+    padding: 0 5px 0 9px;
+  }
+
+  html[data-platform='tauri'] .desktop-workspace-root {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    color: var(--ui-accent);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  html[data-platform='tauri'] .desktop-file-row {
+    display: flex;
+    width: 100%;
+    height: 22px;
+    align-items: center;
+    gap: 4px;
+    border-radius: 3px;
+    padding-right: 5px;
+    color: var(--ui-text-secondary);
+    font-size: 0.6875rem;
+    text-align: left;
+  }
+
+  html[data-platform='tauri'] .desktop-file-row:hover {
+    background: var(--chrome-action-hover);
+    color: var(--ui-text-primary);
+  }
+
+  html[data-platform='tauri'] .desktop-file-chevron {
+    display: inline-grid;
+    width: 11px;
+    flex: 0 0 auto;
+    place-items: center;
+    font-size: 0.58rem;
+  }
+
+  html[data-platform='tauri'] .desktop-file-preview-back {
+    display: flex;
+    height: 32px;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    border-bottom: 1px solid var(--ui-stroke-tertiary);
+    padding: 0 8px;
+    color: var(--ui-text-secondary);
+    font-size: 0.6875rem;
+  }
+
+  html[data-platform='tauri'] .desktop-file-preview {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    margin: 0;
+    padding: 10px;
+    color: var(--ui-text-secondary);
+    font-family: var(--dt-font-mono);
+    font-size: 0.625rem;
+    line-height: 1.55;
+    user-select: text;
+    white-space: pre-wrap;
+  }
+}
+
 body {
   margin: 0;
   background: var(--ui-bg-chrome);

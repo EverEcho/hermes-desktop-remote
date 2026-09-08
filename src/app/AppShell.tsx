@@ -20,6 +20,18 @@ import { MessagingPage } from '@/features/MessagingPage'
 import { useI18n } from '@/i18n'
 import { Sidebar } from './Sidebar'
 import { NewSessionHome } from './NewSessionHome'
+import { DesktopTitlebar } from './DesktopTitlebar'
+import { DesktopWorkspacePanel } from '@/workspace/DesktopWorkspacePanel'
+import { useIsDesktop } from '@/ui/useMediaQuery'
+import { isTauriPlatform } from '@/native'
+
+const LEFT_SIDEBAR_KEY = 'rhermes.desktop.left-sidebar'
+const RIGHT_SIDEBAR_KEY = 'rhermes.desktop.right-sidebar'
+
+function loadPanelPreference(key: string, fallback: boolean): boolean {
+  const saved = window.localStorage.getItem(key)
+  return saved === null ? fallback : saved === 'true'
+}
 
 export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -28,6 +40,10 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [cronOpen, setCronOpen] = useState(false)
   const [messagingOpen, setMessagingOpen] = useState(false)
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState(() => loadPanelPreference(LEFT_SIDEBAR_KEY, true))
+  const [rightSidebarVisible, setRightSidebarVisible] = useState(() => loadPanelPreference(RIGHT_SIDEBAR_KEY, true))
+  const isDesktop = useIsDesktop()
+  const isTauriDesktop = isDesktop && isTauriPlatform()
   const connectionState = useStore($connectionState)
   const sessions = useStore($sessions)
   const sessionsLoading = useStore($sessionsLoading)
@@ -39,6 +55,14 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
   const pendingSecrets = useStore($pendingSecrets)
   const pendingSudo = useStore($pendingSudo)
   const pendingMcpSetup = useStore($pendingMcpSetup)
+
+  useEffect(() => {
+    window.localStorage.setItem(LEFT_SIDEBAR_KEY, String(leftSidebarVisible))
+  }, [leftSidebarVisible])
+
+  useEffect(() => {
+    window.localStorage.setItem(RIGHT_SIDEBAR_KEY, String(rightSidebarVisible))
+  }, [rightSidebarVisible])
 
   useEffect(() => {
     void refreshSessions()
@@ -88,8 +112,22 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
 
   return (
     <div className="h-full flex bg-(--ui-bg-chrome)">
+      {isTauriDesktop ? (
+        <DesktopTitlebar
+          connectionState={connectionState}
+          leftSidebarVisible={leftSidebarVisible}
+          rightSidebarVisible={rightSidebarVisible && Boolean(currentCwd)}
+          rightSidebarAvailable={Boolean(activeSessionId && currentCwd)}
+          title={activeSessionId ? sessionTitle || 'RHermes' : 'RHermes'}
+          onToggleLeftSidebar={() => setLeftSidebarVisible(value => !value)}
+          onToggleRightSidebar={() => setRightSidebarVisible(value => !value)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenWorkspace={() => setWorkspaceOpen(true)}
+          onRetry={handleRetry}
+        />
+      ) : null}
       {/* Desktop Sidebar (hidden on mobile) */}
-      <div className="hidden md:flex shrink-0">
+      <div className={leftSidebarVisible ? 'hidden md:flex shrink-0' : 'hidden'}>
         <Sidebar
           sessions={sessions}
           loading={sessionsLoading}
@@ -103,6 +141,7 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileHeader
+          className="app-mobile-header"
           onMenuPress={() => setDrawerOpen(true)}
           onSettingsPress={() => setSettingsOpen(true)}
           connectionState={connectionState}
@@ -175,6 +214,13 @@ export function AppShell({ onChangeGateway }: { onChangeGateway: () => void }) {
         <McpSetupSheet request={pendingMcpSetup[0]} />
       )}
       </div>
+      {isTauriDesktop && rightSidebarVisible && currentCwd ? (
+        <DesktopWorkspacePanel
+          cwd={currentCwd}
+          onClose={() => setRightSidebarVisible(false)}
+          onOpenWorkspace={() => setWorkspaceOpen(true)}
+        />
+      ) : null}
     </div>
   )
 }

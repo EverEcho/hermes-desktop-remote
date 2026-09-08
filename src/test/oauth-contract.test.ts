@@ -20,6 +20,13 @@ describe('OAuth PKCE protocol alignment', () => {
     expect(url.startsWith('https://gw.example.com/auth/native/authorize')).toBe(true)
   })
 
+  it('builds a desktop authorize URL with a loopback redirect URI', () => {
+    const redirectUri = 'http://127.0.0.1:53142/oauth/callback'
+    const url = buildAuthorizeUrl('https://gw.example.com', 'c', 's', redirectUri)
+
+    expect(url).toContain(`redirect_uri=${encodeURIComponent(redirectUri)}`)
+  })
+
   it('parses a valid OAuth callback URL', () => {
     const result = parseOAuthCallback('rhermes-mobile://oauth/callback?code=abc123&state=xyz789')
 
@@ -32,6 +39,23 @@ describe('OAuth PKCE protocol alignment', () => {
 
   it('rejects callback with wrong scheme', () => {
     expect(parseOAuthCallback('https://evil.com/callback?code=abc&state=xyz')).toBeNull()
+  })
+
+  it('parses only the exact desktop loopback callback', () => {
+    const redirectUri = 'http://127.0.0.1:53142/oauth/callback'
+
+    expect(
+      parseOAuthCallback(
+        'http://127.0.0.1:53142/oauth/callback?code=desktop-code&state=desktop-state',
+        redirectUri
+      )
+    ).toEqual({ code: 'desktop-code', state: 'desktop-state' })
+    expect(
+      parseOAuthCallback(
+        'http://127.0.0.1:53143/oauth/callback?code=desktop-code&state=desktop-state',
+        redirectUri
+      )
+    ).toBeNull()
   })
 
   it('rejects non-URL input', () => {

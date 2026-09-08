@@ -23,6 +23,16 @@ export const en = {
     signIn: 'Sign in',
     retry: 'Retry'
   },
+  desktop: {
+    showLeftSidebar: 'Show left sidebar',
+    hideLeftSidebar: 'Hide left sidebar',
+    showFileList: 'Show file list',
+    hideFileList: 'Hide file list',
+    openWorkspace: 'Open workspace',
+    gatewayConnected: 'Gateway connected',
+    reconnectGateway: 'Reconnect gateway',
+    refreshFiles: 'Refresh files'
+  },
   sidebar: {
     newSession: 'New session',
     skills: 'Capabilities',

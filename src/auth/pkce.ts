@@ -1,3 +1,5 @@
+import { gatewayFetch } from '@/gateway/fetch'
+
 const REDIRECT_URI = 'rhermes-mobile://oauth/callback'
 
 function base64UrlEncode(buffer: ArrayBuffer): string {
@@ -34,12 +36,13 @@ export async function generatePkceChallenge(): Promise<PkceChallenge> {
 export function buildAuthorizeUrl(
   gatewayUrl: string,
   challenge: string,
-  state: string
+  state: string,
+  redirectUri = REDIRECT_URI
 ): string {
   const base = gatewayUrl.replace(/\/+$/, '')
   const params = new URLSearchParams({
     response_type: 'code',
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     code_challenge: challenge,
     code_challenge_method: 'S256',
     state
@@ -53,11 +56,17 @@ export interface OAuthCallbackResult {
   state: string
 }
 
-export function parseOAuthCallback(url: string): OAuthCallbackResult | null {
+export function parseOAuthCallback(url: string, expectedRedirectUri = REDIRECT_URI): OAuthCallbackResult | null {
   try {
     const parsed = new URL(url)
+    const expected = new URL(expectedRedirectUri)
 
-    if (!parsed.protocol.startsWith('rhermes-mobile')) {
+    if (
+      parsed.protocol !== expected.protocol ||
+      parsed.hostname !== expected.hostname ||
+      parsed.port !== expected.port ||
+      parsed.pathname !== expected.pathname
+    ) {
       return null
     }
 
@@ -116,7 +125,7 @@ export async function exchangeCodeForTokens(
   verifier: string
 ): Promise<ParsedTokenSet> {
   const base = gatewayUrl.replace(/\/+$/, '')
-  const response = await fetch(`${base}/auth/native/token`, {
+  const response = await gatewayFetch(`${base}/auth/native/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, code_verifier: verifier })
@@ -138,7 +147,7 @@ export async function refreshAccessToken(
   provider: string
 ): Promise<ParsedTokenSet> {
   const base = gatewayUrl.replace(/\/+$/, '')
-  const response = await fetch(`${base}/auth/native/refresh`, {
+  const response = await gatewayFetch(`${base}/auth/native/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: refreshToken, provider })
@@ -169,7 +178,7 @@ export async function requestWsTicket(
   accessToken: string
 ): Promise<string> {
   const base = gatewayUrl.replace(/\/+$/, '')
-  const response = await fetch(`${base}/api/auth/ws-ticket`, {
+  const response = await gatewayFetch(`${base}/api/auth/ws-ticket`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}` }
   })

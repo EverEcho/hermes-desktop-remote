@@ -1,11 +1,23 @@
 import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
+import { Capacitor } from '@capacitor/core'
 
 import { App } from './App'
 import { initializeNativeAdapters, onAppStateChange, onNetworkChange, onKeyboardHeightChange } from './native'
 import { reconnectGateway } from './gateway'
 import { initThemeMode } from './settings/theme-store'
 import './styles.css'
+
+const runtimePlatform = Capacitor.getPlatform()
+document.documentElement.dataset.platform = runtimePlatform
+
+if (runtimePlatform === 'tauri') {
+  document.documentElement.dataset.desktopOs = /Macintosh|Mac OS X/i.test(navigator.userAgent)
+    ? 'macos'
+    : /Windows/i.test(navigator.userAgent)
+      ? 'windows'
+      : 'linux'
+}
 
 function LifecycleManager() {
   useEffect(() => {

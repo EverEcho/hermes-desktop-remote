@@ -13,9 +13,12 @@ import { I18nProvider, useI18n } from '@/i18n'
 
 export function App() {
   return (
-    <I18nProvider>
-      <AppRoot />
-    </I18nProvider>
+    <>
+      <div className="tauri-titlebar" data-tauri-drag-region aria-hidden="true" />
+      <I18nProvider>
+        <AppRoot />
+      </I18nProvider>
+    </>
   )
 }
 
