@@ -17,6 +17,7 @@ import { MobileComposer } from '@/components/MobileComposer'
 import { cn } from '@/ui/utils'
 import { MarkdownContent } from '@/components/MarkdownContent'
 import { Codicon } from '@/ui/Codicon'
+import { ToolIcon } from '@/ui/ToolIcon'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { Button } from '@/ui/Button'
 import * as api from '@/gateway/api'
@@ -65,7 +66,7 @@ export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetai
     <div className="h-full flex flex-col relative bg-(--ui-bg-chrome)">
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto no-scrollbar px-3 md:px-6 py-4 space-y-4 max-w-4xl mx-auto w-full"
+        className="flex-1 overflow-y-auto no-scrollbar px-3 md:px-6 py-4 space-y-5 max-w-4xl mx-auto w-full"
         onScroll={handleScroll}
       >
         {hasEarlier && (
@@ -92,7 +93,7 @@ export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetai
         )}
 
         {groupMessagesByTurn(messages).map(group => (
-          <div key={group[0].id} className="flex min-w-0 flex-col gap-4">
+          <div key={group[0].id} className="flex min-w-0 flex-col gap-1.5 pb-2">
             {group.map(msg => (
               <MessageRow
                 key={msg.id}
@@ -232,10 +233,44 @@ function ProcessNotificationNote({ text }: { text: string }) {
   )
 }
 
+function UserMessageText({ text }: { text: string }) {
+  if (text.includes('```')) {
+    const parts = text.split(/(```[\s\S]*?```)/g)
+    return (
+      <div className="text-[length:var(--conversation-text-font-size)] leading-[var(--conversation-line-height)] text-(--ui-text-primary) wrap-anywhere font-sans">
+        {parts.map((part, i) => {
+          if (part.startsWith('```') && part.endsWith('```')) {
+            const lines = part.slice(3, -3).replace(/^\w*\n/, '')
+            return (
+              <pre
+                key={i}
+                className="my-1.5 max-w-full overflow-x-auto rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-chrome)/60 px-2.5 py-1.5 font-mono text-[0.75rem] leading-snug text-(--ui-text-primary)"
+              >
+                <code>{lines}</code>
+              </pre>
+            )
+          }
+          return (
+            <span key={i} className="whitespace-pre-wrap">
+              {part}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="text-[length:var(--conversation-text-font-size)] leading-[var(--conversation-line-height)] text-(--ui-text-primary) wrap-anywhere whitespace-pre-wrap font-sans">
+      {text}
+    </div>
+  )
+}
+
 function UserMessageRow({
   message,
   onEditUser,
-  onPreview
+  onPreview: _onPreview
 }: {
   message: MobileMessage
   onEditUser?: () => void
@@ -248,7 +283,7 @@ function UserMessageRow({
 
   if (textPart.startsWith('[CONTEXT COMPACTION') || textPart.startsWith('[SYSTEM]')) {
     return (
-      <div className="my-3 rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-3 text-xs text-(--ui-text-tertiary) leading-relaxed">
+      <div className="my-2 rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-3 text-xs text-(--ui-text-tertiary) leading-relaxed">
         {textPart}
       </div>
     )
@@ -271,26 +306,22 @@ function UserMessageRow({
   }
 
   return (
-    <div className="sticky top-0 z-10 bg-(--ui-bg-chrome) py-1.5 w-full group/user-msg">
+    <div className="group/user-msg sticky top-0 z-10 w-full bg-(--ui-bg-chrome) py-1">
       <div
         className={cn(
-          'relative w-full rounded-xl border bg-(--ui-bg-card) p-3 text-left shadow-xs transition-colors',
-          message.failed ? 'border-(--ui-red)' : 'border-(--ui-stroke-tertiary)'
+          'composer-human-message relative w-full rounded-xl border bg-(--dt-user-bubble) px-3.5 py-2.5 text-left shadow-xs transition-colors',
+          message.failed ? 'border-(--ui-red)' : 'border-(--dt-user-bubble-border) hover:border-(--ui-stroke-secondary)'
         )}
       >
-        <div className={cn(isLong && !expanded && 'max-h-24 overflow-hidden relative')}>
-          <MarkdownContent
-            content={textPart}
-            className="text-(--conversation-text-font-size) leading-[var(--conversation-line-height)] text-(--ui-text-primary)"
-            onPreview={onPreview}
-          />
+        <div className={cn('pr-14', isLong && !expanded && 'max-h-28 overflow-hidden relative')}>
+          <UserMessageText text={textPart} />
           {isLong && !expanded && (
-            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-(--ui-bg-card) to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-(--dt-user-bubble) to-transparent pointer-events-none" />
           )}
         </div>
 
-        <div className="mt-1 flex items-center justify-between pt-0.5">
-          {isLong ? (
+        {isLong && (
+          <div className="mt-1">
             <button
               type="button"
               onClick={() => setExpanded(!expanded)}
@@ -298,28 +329,29 @@ function UserMessageRow({
             >
               {expanded ? t.common.collapse : t.common.expand}
             </button>
-          ) : <div />}
+          </div>
+        )}
 
-          <div className="flex items-center gap-1 opacity-0 group-hover/user-msg:opacity-100 transition-opacity">
+        {/* Discreet hover action toolbar in top-right corner */}
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 opacity-0 group-hover/user-msg:opacity-100 transition-opacity bg-(--dt-user-bubble)/90 backdrop-blur-xs rounded-md p-0.5 border border-(--ui-stroke-quaternary)/50 shadow-xs">
+          <button
+            type="button"
+            onClick={handleCopy}
+            title={copied ? t.common.copied : t.common.copy}
+            className="size-6 rounded grid place-items-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+          >
+            <Codicon name={copied ? 'check' : 'copy'} className="text-xs" />
+          </button>
+          {onEditUser && (
             <button
               type="button"
-              onClick={handleCopy}
-              title={copied ? t.common.copied : t.common.copy}
-              className="p-1 rounded text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+              onClick={onEditUser}
+              title={t.session.editMessage}
+              className="size-6 rounded grid place-items-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
             >
-              <Codicon name={copied ? 'check' : 'copy'} className="text-xs" />
+              <Codicon name="edit" className="text-xs" />
             </button>
-            {onEditUser && (
-              <button
-                type="button"
-                onClick={onEditUser}
-                title={t.session.editMessage}
-                className="p-1 rounded text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-              >
-                <Codicon name="edit" className="text-xs" />
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>
@@ -374,12 +406,12 @@ function AssistantActionBar({
   }
 
   return (
-    <div className="flex items-center justify-end gap-1.5 pt-1 opacity-0 group-hover/assistant:opacity-100 transition-opacity select-none">
+    <div className="flex items-center justify-end gap-1 pt-1 opacity-0 group-hover/assistant:opacity-100 transition-opacity select-none">
       <button
         type="button"
         onClick={handleCopy}
         title={copied ? t.common.copied : t.common.copy}
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+        className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
       >
         <Codicon name={copied ? 'check' : 'copy'} className="text-xs" />
         <span>{copied ? t.common.copied : t.common.copy}</span>
@@ -390,7 +422,7 @@ function AssistantActionBar({
         disabled={working}
         onClick={() => void toggleSpeak()}
         title={working ? '准备中…' : playing ? '停止朗读' : '朗读'}
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+        className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
       >
         <Codicon name={working ? 'loading' : playing ? 'mute' : 'unmute'} className={cn('text-xs', working && 'animate-spin')} />
         <span>{playing ? '停止' : '朗读'}</span>
@@ -401,7 +433,7 @@ function AssistantActionBar({
           type="button"
           onClick={onRetry}
           title={t.session.retrySend}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
         >
           <Codicon name="refresh" className="text-xs" />
           <span>{t.session.retrySend}</span>
@@ -477,7 +509,7 @@ function MessageRow({
   const assistantFullText = message.parts?.filter(part => part.type === 'text').map(part => part.text).join('\n') ?? ''
 
   return (
-    <div className="w-full my-3 space-y-2 group/assistant">
+    <div className="w-full space-y-1.5 group/assistant">
       {message.error ? (
         <div className="flex items-start gap-2.5 text-(--ui-red) p-3 rounded-xl bg-(--ui-bg-card) border border-(--ui-red)/20">
           <Codicon name="error" className="mt-0.5 shrink-0 text-sm" />
@@ -511,24 +543,63 @@ function ThinkingAccordion({ reasoning }: { reasoning: string }) {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="my-1.5 text-xs">
+    <div className="my-1 text-[length:var(--conversation-tool-font-size)] leading-(--conversation-line-height)">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-(--ui-text-tertiary) hover:text-(--ui-text-secondary) transition-colors py-0.5"
+        className="group/thinking-toggle flex items-center gap-1.5 text-left text-(--conversation-scaffold-text) hover:text-(--ui-text-primary) transition-colors py-0.5 select-none"
       >
-        <span className="font-normal">{t.session.thought}</span>
+        <span className="grid size-3.5 shrink-0 place-items-center">
+          <Codicon name="sparkle" size="0.75rem" className="text-(--conversation-scaffold-text) group-hover/thinking-toggle:text-(--ui-text-primary) transition-colors" />
+        </span>
+        <span className="text-[0.72rem] text-(--conversation-scaffold-text) group-hover/thinking-toggle:text-(--ui-text-primary) transition-colors">
+          {t.session.thought}
+        </span>
         <Codicon
           name="chevron-down"
-          className={cn('text-[0.65rem] text-(--ui-text-quaternary) transition-transform duration-150', open && 'rotate-180')}
+          className={cn(
+            'text-[0.625rem] text-(--ui-text-quaternary) transition-transform duration-150',
+            open ? 'rotate-180 opacity-80' : 'opacity-40 group-hover/thinking-toggle:opacity-80'
+          )}
         />
       </button>
       {open && (
-        <div className="mt-1 text-[0.72rem] text-(--ui-text-tertiary) whitespace-pre-wrap max-h-56 overflow-y-auto no-scrollbar leading-relaxed font-sans">
+        <div className="mt-1 pl-4 py-1.5 border-l-2 border-(--ui-stroke-tertiary) text-[0.72rem] text-(--ui-text-tertiary) whitespace-pre-wrap max-h-60 overflow-y-auto no-scrollbar leading-relaxed font-sans bg-(--ui-bg-card)/30 rounded-r-md">
           {reasoning}
         </div>
       )}
     </div>
   )
+}
+
+function CopySnippetButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title={copied ? '已复制' : '复制'}
+      className="p-1 rounded text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors shrink-0"
+    >
+      <Codicon name={copied ? 'check' : 'copy'} className="text-[0.68rem]" />
+    </button>
+  )
+}
+
+function resolveToolIconName(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower === 'terminal' || lower.includes('exec') || lower.includes('run') || lower.includes('bash') || lower.includes('sh')) return 'terminal'
+  if (lower.includes('search') || lower.includes('grep') || lower.includes('find')) return 'search'
+  if (lower.includes('read') || lower.includes('view') || lower.includes('cat')) return 'file'
+  if (lower.includes('write') || lower.includes('edit') || lower.includes('patch') || lower.includes('diff')) return 'edit'
+  if (lower.includes('web') || lower.includes('fetch') || lower.includes('browse') || lower.includes('http') || lower.includes('url')) return 'globe'
+  if (lower.includes('memory') || lower.includes('recall')) return 'brain'
+  if (lower.includes('skill')) return 'tools'
+  if (lower.includes('watch') || lower.includes('cron')) return 'watch'
+  return 'tools'
 }
 
 function ToolGroupAccordion({
@@ -544,80 +615,110 @@ function ToolGroupAccordion({
 
   const isSingle = tools.length === 1
   const first = tools[0]
-  const isSearch = first.name.toLowerCase().includes('search') || first.name.toLowerCase().includes('grep') || first.name.toLowerCase().includes('find')
-  const icon = isSearch ? 'search' : first.name.includes('run') || first.name.includes('exec') || first.name === 'terminal' ? 'terminal' : 'tools'
+  const iconName = resolveToolIconName(first.name)
+
+  const isRunning = tools.some(t => t.status === 'running')
+  const isError = tools.some(t => t.status === 'error')
 
   const titleText = isSingle
     ? formatToolHeader(t, first.name, first.args, first.summary)
     : summarizeMobileToolGroup(t, tools)
 
+  const totalDuration = tools.reduce((acc, t) => (t.durationS ? acc + t.durationS : acc), 0)
+
   return (
-    <div className="my-1.5 text-xs">
+    <div className="my-1 text-[length:var(--conversation-tool-font-size)] leading-(--conversation-line-height)">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-left text-(--ui-text-tertiary) hover:text-(--ui-text-secondary) transition-colors py-0.5"
+        className="group/tool-toggle flex items-center gap-1.5 text-left text-(--conversation-scaffold-text) hover:text-(--ui-text-primary) transition-colors py-0.5 select-none"
       >
-        <Codicon
-          name={icon}
-          className={cn(
-            'text-xs shrink-0',
-            tools.some(t => t.status === 'running')
-              ? 'text-(--ui-accent) animate-spin'
-              : tools.some(t => t.status === 'error')
-              ? 'text-(--ui-red)'
-              : 'text-(--ui-text-quaternary)'
+        <span className="grid size-3.5 shrink-0 place-items-center">
+          {isRunning ? (
+            <Codicon name="loading" className="text-xs text-(--ui-accent) animate-spin" />
+          ) : isError ? (
+            <Codicon name="error" className="text-xs text-(--ui-red)" />
+          ) : (
+            <ToolIcon name={iconName} size="0.75rem" className="text-(--conversation-scaffold-text) group-hover/tool-toggle:text-(--ui-text-primary) transition-colors" />
           )}
-        />
-        <span className="font-mono text-[0.72rem] text-(--ui-text-tertiary) truncate flex-1">
+        </span>
+        <span className="font-mono text-[0.72rem] text-(--conversation-scaffold-text) group-hover/tool-toggle:text-(--ui-text-primary) transition-colors truncate flex-1">
           {titleText}
         </span>
+        {totalDuration > 0 && (
+          <span className="shrink-0 text-[0.625rem] tabular-nums text-(--conversation-scaffold-meta)">
+            {totalDuration.toFixed(1)}s
+          </span>
+        )}
         <Codicon
           name="chevron-down"
-          className={cn('text-xs text-(--ui-text-quaternary) ml-0.5 transition-transform duration-150', open && 'rotate-180')}
+          className={cn(
+            'text-[0.625rem] text-(--ui-text-quaternary) transition-transform duration-150',
+            open ? 'rotate-180 opacity-80' : 'opacity-40 group-hover/tool-toggle:opacity-80'
+          )}
         />
       </button>
 
       {open && (
-        <div className="mt-1.5 p-2.5 text-[0.72rem] font-mono rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) space-y-2 text-(--ui-text-secondary)">
+        <div className="mt-1.5 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card)/80 backdrop-blur-xs overflow-hidden divide-y divide-(--ui-stroke-quaternary) text-xs">
           {tools.map((tc, i) => {
             const filePath = extractFilePath(tc.args)
+            const command = extractCommandText(tc.args)
+            const resultStr = tc.result != null ? (typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)) : ''
 
             return (
-              <div key={tc.id || i} className={cn(i > 0 && 'border-t border-(--ui-stroke-quaternary) pt-2')}>
-                <div className="flex items-center gap-1.5 text-(--ui-text-tertiary) mb-1 font-sans">
+              <div key={tc.id || i} className="p-2.5 space-y-2">
+                <div className="flex items-center gap-1.5 text-(--ui-text-tertiary)">
                   <span className="font-mono text-[0.7rem] font-semibold text-(--ui-text-secondary) truncate">
                     {formatToolHeader(t, tc.name, tc.args, tc.summary)}
                   </span>
-                  {onPreview && filePath ? (
+                  {onPreview && filePath && (
                     <button
-                      className="ml-1 shrink-0 rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.62rem] text-(--ui-accent) hover:bg-(--chrome-action-hover)"
+                      className="ml-1 shrink-0 rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.62rem] font-medium text-(--ui-accent) hover:bg-(--chrome-action-hover) transition-colors"
                       onClick={() => onPreview({ kind: 'file', value: filePath })}
                       type="button"
                     >
                       Preview
                     </button>
-                  ) : null}
+                  )}
                   {tc.durationS != null && (
-                    <span className="text-[0.625rem] text-(--ui-text-quaternary) ml-auto shrink-0">
+                    <span className="text-[0.625rem] tabular-nums text-(--ui-text-quaternary) ml-auto shrink-0">
                       {tc.durationS.toFixed(1)}s
                     </span>
                   )}
                 </div>
-                {extractCommandText(tc.args) && (
-                  <div className="overflow-x-auto bg-(--ui-bg-chrome)/50 p-1.5 rounded border border-(--ui-stroke-quaternary) mb-1">
-                    <span className="text-(--ui-accent) select-none">$ </span>
-                    {extractCommandText(tc.args)}
+
+                {command && (
+                  <div className="flex items-center justify-between gap-2 overflow-x-auto rounded border border-(--ui-stroke-quaternary) bg-(--ui-bg-chrome)/60 px-2 py-1.5 font-mono text-[0.7rem] text-(--ui-text-primary)">
+                    <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto no-scrollbar">
+                      <span className="text-(--ui-accent) select-none font-bold">$</span>
+                      <span className="truncate">{command}</span>
+                    </div>
+                    <CopySnippetButton text={command} />
                   </div>
                 )}
-                {Boolean(tc.result) && (
-                  <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
-                    {typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2)}
-                  </pre>
+
+                {resultStr && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
+                      <span>输出 / 结果</span>
+                      <CopySnippetButton text={resultStr} />
+                    </div>
+                    <pre className="max-h-52 overflow-y-auto overflow-x-auto rounded border border-(--ui-stroke-quaternary)/50 bg-(--ui-bg-chrome)/40 p-2 font-mono text-[0.68rem] leading-relaxed text-(--ui-text-secondary) whitespace-pre-wrap no-scrollbar">
+                      {resultStr}
+                    </pre>
+                  </div>
                 )}
+
                 {tc.inlineDiff && (
-                  <pre className="overflow-x-auto whitespace-pre-wrap max-h-44 overflow-y-auto no-scrollbar text-(--ui-text-secondary)">
-                    {tc.inlineDiff}
-                  </pre>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[0.625rem] font-semibold uppercase tracking-wider text-(--ui-text-tertiary)">
+                      <span>变更差异 (Diff)</span>
+                      <CopySnippetButton text={tc.inlineDiff} />
+                    </div>
+                    <pre className="max-h-52 overflow-y-auto overflow-x-auto rounded border border-(--ui-stroke-quaternary)/50 bg-(--ui-bg-chrome)/40 p-2 font-mono text-[0.68rem] leading-relaxed text-(--ui-text-secondary) whitespace-pre-wrap no-scrollbar">
+                      {tc.inlineDiff}
+                    </pre>
+                  </div>
                 )}
               </div>
             )

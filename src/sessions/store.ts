@@ -296,6 +296,33 @@ export async function loadEarlierMessages(): Promise<void> {
   }
 }
 
+/** Sync latest transcript messages from gateway database. */
+export async function syncActiveSessionMessages(): Promise<void> {
+  const sessionId = $activeSessionId.get()
+  const generation = activeSessionGeneration
+  if (!sessionId) return
+
+  try {
+    const transcript = await api.getSessionMessages(sessionId, {
+      limit: 120,
+      includeCompacted: true,
+      order: 'latest'
+    })
+
+    if (generation !== activeSessionGeneration || sessionId !== $activeSessionId.get()) {
+      return
+    }
+
+    const serverMessages = convertMessages(transcript.messages)
+    if (serverMessages.length > 0) {
+      $messages.set(serverMessages)
+      updateTranscriptWindow(transcript)
+    }
+  } catch {
+    // best effort
+  }
+}
+
 export interface SendMessageOptions {
   model?: string
   provider?: string
@@ -395,6 +422,7 @@ export async function sendMessage(
 
   try {
     await submitPromptWithRecovery(runtimeId, storedSessionId, text.trim(), options)
+    void syncActiveSessionMessages()
     return true
   } catch (error) {
     if (generation !== activeSessionGeneration || storedSessionId !== $activeSessionId.get()) {
@@ -759,6 +787,35 @@ const STREAM_EVENT_TYPES = new Set([
   'tool.start'
 ])
 
+function extractDeltaText(payload: Record<string, unknown>): string {
+  if (typeof payload.text === 'string' && payload.text) return payload.text
+  if (typeof payload.content === 'string' && payload.content) return payload.content
+  if (typeof payload.delta === 'string' && payload.delta) return payload.delta
+  if (payload.delta && typeof payload.delta === 'object') {
+    const d = payload.delta as Record<string, unknown>
+    if (typeof d.text === 'string' && d.text) return d.text
+    if (typeof d.content === 'string' && d.content) return d.content
+  }
+  if (Array.isArray(payload.choices) && payload.choices[0]) {
+    const choice = payload.choices[0] as Record<string, unknown>
+    const delta = choice.delta as Record<string, unknown> | undefined
+    if (delta) {
+      if (typeof delta.content === 'string') return delta.content
+      if (typeof delta.text === 'string') return delta.text
+    }
+    if (typeof choice.text === 'string') return choice.text
+  }
+  if (typeof payload.chunk === 'string' && payload.chunk) return payload.chunk
+  if (typeof payload.output_text === 'string' && payload.output_text) return payload.output_text
+  if (typeof payload.message === 'string' && payload.message) return payload.message
+  if (payload.message && typeof payload.message === 'object') {
+    const m = payload.message as Record<string, unknown>
+    if (typeof m.content === 'string') return m.content
+    if (typeof m.text === 'string') return m.text
+  }
+  return ''
+}
+
 function handleSessionEvent(event: GatewayEvent, generation: number): void {
   if (generation !== activeSessionGeneration) {
     return
@@ -794,8 +851,13 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       break
     }
 
-    case 'message.delta': {
-      const text = String(payload.text ?? '')
+    case 'message.delta':
+    case 'message.interim':
+    case 'text.delta':
+    case 'content.delta':
+    case 'response.delta':
+    case 'stream.delta': {
+      const text = extractDeltaText(payload)
 
       if (!text) {
         break
@@ -804,17 +866,30 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       const updated = [...messages]
       const last = updated[updated.length - 1]
 
-      if (last && last.role === 'assistant' && last.pending) {
-        const parts = [...last.parts]
-        const lastPart = parts[parts.length - 1]
-        if (lastPart && lastPart.type === 'text') {
-          parts[parts.length - 1] = { ...lastPart, text: lastPart.text + text }
-        } else {
-          parts.push({ type: 'text', text })
+      if (!last || last.role !== 'assistant') {
+        const assistantMsg: MobileMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text }],
+          timestamp: Date.now() / 1000,
+          pending: true
         }
-        updated[updated.length - 1] = { ...last, parts }
+        updated.push(assistantMsg)
         $messages.set(updated)
+        $awaitingResponse.set(false)
+        break
       }
+
+      const parts = [...last.parts]
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && lastPart.type === 'text') {
+        parts[parts.length - 1] = { ...lastPart, text: lastPart.text + text }
+      } else {
+        parts.push({ type: 'text', text })
+      }
+      updated[updated.length - 1] = { ...last, parts }
+      $messages.set(updated)
+      $awaitingResponse.set(false)
       break
     }
 
@@ -822,18 +897,26 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       $busy.set(false)
       $awaitingResponse.set(false)
 
-      const updated = messages.map(msg =>
-        msg.pending ? { ...msg, pending: false } : msg
-      )
+      const finalText = extractDeltaText(payload)
+      const currentMessages = $messages.get()
+      const updated = currentMessages.map(msg => {
+        if (!msg.pending) return msg
+        const newMsg = { ...msg, pending: false }
+        if (finalText && !newMsg.parts.some(p => p.type === 'text')) {
+          newMsg.parts = [...newMsg.parts, { type: 'text', text: finalText }]
+        }
+        return newMsg
+      })
       $messages.set(updated)
       void refreshSessions()
+      void syncActiveSessionMessages()
       scheduleQueuedPromptDrain()
       break
     }
 
     case 'thinking.delta':
     case 'reasoning.delta': {
-      const text = String(payload.text ?? '')
+      const text = extractDeltaText(payload) || String(payload.text ?? '')
 
       if (!text) {
         break
@@ -842,19 +925,33 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       const updated = [...messages]
       const last = updated[updated.length - 1]
 
-      if (last && last.role === 'assistant') {
-        const parts = [...last.parts]
-        const lastPart = parts[parts.length - 1]
-        if (lastPart && lastPart.type === 'reasoning') {
-          parts[parts.length - 1] = { ...lastPart, reasoning: lastPart.reasoning + text }
-        } else {
-          parts.push({ type: 'reasoning', reasoning: text })
+      if (!last || last.role !== 'assistant') {
+        const assistantMsg: MobileMessage = {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          parts: [{ type: 'reasoning', reasoning: text }],
+          timestamp: Date.now() / 1000,
+          pending: true
         }
-        updated[updated.length - 1] = { ...last, parts }
+        updated.push(assistantMsg)
         $messages.set(updated)
+        $awaitingResponse.set(false)
+        break
       }
+
+      const parts = [...last.parts]
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && lastPart.type === 'reasoning') {
+        parts[parts.length - 1] = { ...lastPart, reasoning: lastPart.reasoning + text }
+      } else {
+        parts.push({ type: 'reasoning', reasoning: text })
+      }
+      updated[updated.length - 1] = { ...last, parts }
+      $messages.set(updated)
+      $awaitingResponse.set(false)
       break
     }
+
 
     case 'tool.start': {
       const toolCallPart: MobileMessagePart = {
@@ -933,6 +1030,7 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
         if (!payload.running) {
           $awaitingResponse.set(false)
           $messages.set(finalizeInterruptedMessages($messages.get()))
+          void syncActiveSessionMessages()
           scheduleQueuedPromptDrain()
         }
       }

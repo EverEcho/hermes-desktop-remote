@@ -5,6 +5,7 @@ import { openExternalUrl } from '@/native'
 import type { SessionInfo, SessionMessage } from '@/types/hermes'
 import { Button } from '@/ui/Button'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
+import { useI18n } from '@/i18n'
 
 type ArtifactKind = 'file' | 'image' | 'link'
 
@@ -33,7 +34,7 @@ function labelFor(value: string): string {
   try { return new URL(value).pathname.split('/').filter(Boolean).pop() || value } catch { return value.split(/[\\/]/).filter(Boolean).pop() || value }
 }
 
-function collectArtifacts(session: SessionInfo, messages: SessionMessage[]): ArtifactRecord[] {
+function collectArtifacts(session: SessionInfo, messages: SessionMessage[], untitledLabel: string): ArtifactRecord[] {
   const records = new Map<string, ArtifactRecord>()
   const add = (raw: string) => {
     const value = raw.trim().replace(/[),.;]+$/, '')
@@ -45,7 +46,7 @@ function collectArtifacts(session: SessionInfo, messages: SessionMessage[]): Art
       kind: IMAGE_RE.test(value) ? 'image' : FILE_RE.test(value) ? 'file' : 'link',
       label: labelFor(value),
       sessionId: session.id,
-      sessionTitle: session.title || session.preview || 'Untitled session',
+      sessionTitle: session.title || session.preview || untitledLabel,
       value
     })
   }
@@ -73,6 +74,8 @@ interface ArtifactsPageProps {
  * is read-only and deliberately sequential so a remote Gateway is not flooded
  * by transcript requests. */
 export function ArtifactsPage({ onClose, onOpenSession, onPreview, open }: ArtifactsPageProps) {
+  const { t } = useI18n()
+  const a = t.artifacts
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -87,7 +90,7 @@ export function ArtifactsPage({ onClose, onOpenSession, onPreview, open }: Artif
       for (const session of sessions) {
         try {
           const messages = await api.getSessionMessages(session.id, { includeCompacted: true, limit: 240, order: 'latest' })
-          indexed.push(...collectArtifacts(session, messages.messages))
+          indexed.push(...collectArtifacts(session, messages.messages, t.sidebar.untitled))
         } catch {
           // A single unavailable/old session must not hide artifacts from the
           // other sessions in the Gateway history.
@@ -95,11 +98,11 @@ export function ArtifactsPage({ onClose, onOpenSession, onPreview, open }: Artif
       }
       setArtifacts(indexed)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to load artifacts')
+      setError(reason instanceof Error ? reason.message : a.loadError)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [a.loadError, t.sidebar.untitled])
 
   useEffect(() => { if (open) void refresh() }, [open, refresh])
 
@@ -109,20 +112,43 @@ export function ArtifactsPage({ onClose, onOpenSession, onPreview, open }: Artif
   }, [artifacts, query])
 
   return (
-    <ResponsiveSheet onClose={onClose} open={open} title="Artifacts">
+    <ResponsiveSheet onClose={onClose} open={open} title={a.title}>
       <div className="space-y-3">
-        <div className="flex gap-2"><input className="webhook-input flex-1" onChange={event => setQuery(event.target.value)} placeholder="Filter artifacts" value={query} /><Button disabled={loading} onClick={() => void refresh()} size="sm" variant="secondary">Refresh</Button></div>
-        <p className="text-xs text-(--ui-text-tertiary)">Indexes generated files and links from the latest 30 Gateway sessions.</p>
+        <div className="flex gap-2">
+          <input
+            className="webhook-input flex-1"
+            onChange={event => setQuery(event.target.value)}
+            placeholder={a.filterPlaceholder}
+            value={query}
+          />
+          <Button disabled={loading} onClick={() => void refresh()} size="sm" variant="secondary">
+            {loading ? t.common.loading : a.refresh}
+          </Button>
+        </div>
+        <p className="text-xs text-(--ui-text-tertiary)">{a.description}</p>
         {error ? <div className="rounded-md bg-(--ui-red)/10 px-2.5 py-2 text-xs text-(--ui-red)">{error}</div> : null}
-        {loading ? <div className="py-8 text-center text-xs text-(--ui-text-quaternary)">Indexing session history…</div> : null}
-        {!loading && !visible.length ? <div className="py-8 text-center text-xs text-(--ui-text-quaternary)">No generated files or links found.</div> : null}
+        {loading ? <div className="py-8 text-center text-xs text-(--ui-text-quaternary)">{a.indexing}</div> : null}
+        {!loading && !visible.length ? <div className="py-8 text-center text-xs text-(--ui-text-quaternary)">{a.empty}</div> : null}
         <div className="overflow-hidden rounded-lg border border-(--ui-stroke-tertiary)">
           {visible.map(item => (
             <div className="flex items-center gap-3 border-b border-(--ui-stroke-tertiary) px-3 py-2.5 last:border-b-0" key={item.id}>
-              <span className="rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.65rem] text-(--ui-text-tertiary)">{item.kind}</span>
-              <button className="min-w-0 flex-1 text-left" onClick={() => onOpenSession(item.sessionId)} type="button"><span className="block truncate text-xs font-medium text-(--ui-text-primary)">{item.label}</span><span className="block truncate pt-0.5 text-[0.68rem] text-(--ui-text-quaternary)">{item.sessionTitle}</span></button>
-              {onPreview ? <button className="text-xs text-(--ui-accent)" onClick={() => onPreview(item.value)} type="button">Preview</button> : null}
-              {item.value.startsWith('http') ? <button className="text-xs text-(--ui-text-tertiary)" onClick={() => void openExternalUrl(item.value)} type="button">Open</button> : null}
+              <span className="rounded bg-(--ui-bg-quaternary) px-1.5 py-0.5 text-[0.65rem] text-(--ui-text-tertiary)">
+                {a.kinds[item.kind] || item.kind}
+              </span>
+              <button className="min-w-0 flex-1 text-left" onClick={() => onOpenSession(item.sessionId)} type="button">
+                <span className="block truncate text-xs font-medium text-(--ui-text-primary)">{item.label}</span>
+                <span className="block truncate pt-0.5 text-[0.68rem] text-(--ui-text-quaternary)">{item.sessionTitle}</span>
+              </button>
+              {onPreview ? (
+                <button className="text-xs text-(--ui-accent) hover:underline" onClick={() => onPreview(item.value)} type="button">
+                  {a.preview}
+                </button>
+              ) : null}
+              {item.value.startsWith('http') ? (
+                <button className="text-xs text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:underline" onClick={() => void openExternalUrl(item.value)} type="button">
+                  {a.open}
+                </button>
+              ) : null}
             </div>
           ))}
         </div>

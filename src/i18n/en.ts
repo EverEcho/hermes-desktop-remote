@@ -577,13 +577,34 @@ export const en = {
     searchPlaceholder: 'Search skills…',
     loadFailed: 'Could not load skills.',
     noMatches: 'No matching skills',
-    none: 'No skills available'
+    none: 'No skills available',
+    hub: 'Skills Hub',
+    view: 'View',
+    toolsets: 'Toolsets',
+    toolsetsDescription: 'Gateway toolsets available to the agent.',
+    needsSetup: 'Needs setup',
+    noToolsets: 'No toolsets reported by this Gateway.',
+    mcpServers: 'MCP servers',
+    mcpServersDescription: 'Configured Model Context Protocol servers.',
+    manage: 'Manage',
+    toolsCount: (n: number) => `${n} tools`,
+    noMcpServers: 'No MCP servers configured.',
+    configure: 'Configure',
+    previewError: 'Unable to load this skill from the Gateway.'
   },
   cron: {
     title: 'Cron Jobs',
+    count: (count: number) => `${count} jobs`,
     new: 'New cron',
+    newCron: 'New cron job',
+    search: 'Search cron jobs…',
+    loading: 'Loading cron jobs…',
     loadFailed: 'Could not load cron jobs.',
     none: 'No cron jobs configured',
+    emptyTitleNew: 'No scheduled jobs',
+    emptyDescNew: 'Schedule a prompt with a cron expression or start from an automation template.',
+    emptyTitleSearch: 'No matches found',
+    emptyDescSearch: 'Try a broader search query.',
     pause: 'Pause',
     resume: 'Resume',
     runNow: 'Run now',
@@ -602,7 +623,71 @@ export const en = {
     prompt: 'Prompt',
     promptPlaceholder: 'What should Hermes do?',
     saveFailed: 'Could not save cron job.',
-    saveCron: 'Save cron'
+    saveCron: 'Save cron',
+    last: 'Last:',
+    next: 'Next:',
+    runHistory: 'Run history',
+    noRuns: 'No runs yet',
+    states: {
+      enabled: 'Enabled',
+      scheduled: 'Scheduled',
+      running: 'Running',
+      paused: 'Paused',
+      disabled: 'Disabled',
+      error: 'Error',
+      completed: 'Completed'
+    },
+    deliveryLabels: {
+      local: 'This desktop',
+      telegram: 'Telegram',
+      discord: 'Discord',
+      slack: 'Slack',
+      email: 'Email'
+    },
+    scheduleLabels: {
+      daily: 'Daily 09:00',
+      weekdays: 'Weekdays 09:00',
+      weekly: 'Weekly Mon 09:00',
+      monthly: 'Monthly 1st 09:00',
+      hourly: 'Hourly',
+      'every-15-minutes': 'Every 15 minutes',
+      custom: 'Custom'
+    },
+    scheduleHints: {
+      daily: 'Every day at 9:00 AM',
+      weekdays: 'Monday to Friday at 9:00 AM',
+      weekly: 'Every Monday at 9:00 AM',
+      monthly: 'First day of month at 9:00 AM',
+      hourly: 'Top of the hour',
+      'every-15-minutes': 'Every 15 minutes',
+      custom: 'Cron expression (e.g. 0 9 * * *)'
+    },
+    frequencyLabel: 'Frequency',
+    deliverLabel: 'Deliver to',
+    deliverNeedsHomeChannel: 'Set a home channel first',
+    modelLabel: 'Model',
+    modelDefault: 'Default (global model)',
+    customScheduleLabel: 'Custom schedule',
+    customPlaceholder: '0 9 * * *',
+    customHint: 'Standard 5-part cron expression (min hour dom mon dow).',
+    optional: 'Optional',
+    startFromLabel: 'Start from',
+    customTemplate: 'Custom (blank cron)',
+    saveChanges: 'Save changes',
+    createAction: 'Create cron job',
+    blueprints: {
+      tab: 'Automation Templates',
+      startFrom: 'Start from',
+      custom: 'Custom',
+      dialogDesc: 'Fill in details and schedule automation.',
+      scheduleIt: 'Schedule It',
+      scheduling: 'Scheduling…',
+      scheduled: 'Automation scheduled',
+      loading: 'Loading templates…',
+      failedLoad: 'Failed to load templates',
+      emptyTitle: 'No templates available',
+      emptyDesc: 'No automation templates available on this gateway.'
+    }
   },
   messaging: {
     title: 'Messaging',
@@ -691,6 +776,22 @@ export const en = {
       loadSetupCommand: 'Unable to load setup command',
       loadSoul: 'Unable to load profile soul',
       saveSoul: 'Unable to save profile soul'
+    }
+  },
+  artifacts: {
+    title: 'Artifacts',
+    filterPlaceholder: 'Filter artifacts…',
+    refresh: 'Refresh',
+    description: 'Indexes generated files and links from the latest 30 Gateway sessions.',
+    indexing: 'Indexing session history…',
+    empty: 'No generated files or links found.',
+    preview: 'Preview',
+    open: 'Open',
+    loadError: 'Unable to load artifacts',
+    kinds: {
+      file: 'file',
+      image: 'image',
+      link: 'link'
     }
   }
 }

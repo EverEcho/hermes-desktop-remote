@@ -51,7 +51,7 @@ export function MarkdownContent({
 
   return (
     <div
-      className={cn('mobile_markdown text-(--ui-text-primary)', className)}
+      className={cn('mobile-markdown text-(--ui-text-primary)', className)}
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={handleClick}
     />

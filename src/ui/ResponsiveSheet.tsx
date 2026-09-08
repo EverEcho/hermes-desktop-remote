@@ -8,13 +8,16 @@ interface ResponsiveSheetProps {
   open: boolean
   onClose: () => void
   title?: string
+  subtitle?: ReactNode
+  actions?: ReactNode
   children: ReactNode
   /** Small centered dialog on md+ instead of the full-size panel. */
   compact?: boolean
+  bodyClassName?: string
 }
 
 /** Presentation follows the boot-selected app surface, never a resize event. */
-export function ResponsiveSheet({ open, onClose, title, children, compact }: ResponsiveSheetProps) {
+export function ResponsiveSheet({ open, onClose, title, subtitle, actions, children, compact, bodyClassName }: ResponsiveSheetProps) {
   const isDesktop = useAppSurface() === 'desktop'
 
   useEffect(() => {
@@ -55,18 +58,24 @@ export function ResponsiveSheet({ open, onClose, title, children, compact }: Res
         )}
       >
         <div className={cn('flex shrink-0 items-center justify-between border-b border-(--ui-stroke-tertiary) py-3', compact ? 'px-4' : 'px-6')}>
-          <span className="text-sm font-semibold text-(--ui-text-primary)">{title}</span>
-          <button
-            className="grid size-7 place-items-center rounded-[4px] text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)"
-            onClick={onClose}
-            type="button"
-          >
-            <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" className="size-3.5">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="text-sm font-semibold text-(--ui-text-primary)">{title}</span>
+            {subtitle ? <span className="text-xs text-(--ui-text-tertiary)">{subtitle}</span> : null}
+          </div>
+          <div className="flex items-center gap-2">
+            {actions}
+            <button
+              className="grid size-7 place-items-center rounded-[4px] text-(--ui-text-tertiary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)"
+              onClick={onClose}
+              type="button"
+            >
+              <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" className="size-3.5">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className={cn('flex-1 overflow-y-auto no-scrollbar py-4', compact ? 'px-4' : 'px-6')}>{children}</div>
+        <div className={cn('flex-1 overflow-y-auto no-scrollbar', bodyClassName ?? (compact ? 'px-4 py-4' : 'px-6 py-4'))}>{children}</div>
       </div>
     </div>
   )

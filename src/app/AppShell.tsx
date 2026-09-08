@@ -370,7 +370,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   }, [isDesktopSurface])
 
   return (
-    <div className="h-full flex flex-col bg-(--ui-bg-chrome) overflow-hidden">
+    <div className="h-full h-dvh flex flex-col bg-(--ui-bg-chrome) overflow-hidden">
       {isDesktopSurface ? (
         <DesktopTitlebar
           connectionState={connectionState}
@@ -410,7 +410,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
         />
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 min-h-0 flex-1 flex-col h-full overflow-hidden">
         <MobileHeader
           className="app-mobile-header"
           onMenuPress={() => setDrawerOpen(true)}
@@ -435,7 +435,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
                 tabIds={desktopTabs}
               />
             ) : null}
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 h-full flex flex-col overflow-hidden">
               {activeSessionId ? (
                 <SessionDetail onPreview={handlePreviewTarget} sessionId={activeSessionId} />
               ) : (

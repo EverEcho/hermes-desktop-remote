@@ -59,6 +59,16 @@ export function HomeCharts({ dailyData, modelData, skillData, className }: HomeC
     return Math.max(peak, 1000)
   }, [displayDaily])
 
+  const totalInput = useMemo(
+    () => displayDaily.reduce((acc, cur) => acc + (cur.inputTokens || 0), 0),
+    [displayDaily]
+  )
+
+  const totalOutput = useMemo(
+    () => displayDaily.reduce((acc, cur) => acc + (cur.outputTokens || 0), 0),
+    [displayDaily]
+  )
+
   const displayModels = useMemo(() => {
     if (modelData && modelData.length > 0) return modelData
     return [
@@ -103,30 +113,80 @@ export function HomeCharts({ dailyData, modelData, skillData, className }: HomeC
           </div>
         </div>
 
-        {/* 柱状图主视图 */}
-        <div className="relative flex h-36 items-end gap-1.5 pt-4 pb-1">
+        {/* 柱状图主视图 - flex-1 填满卡片可用高度 */}
+        <div className="relative flex flex-1 min-h-[14rem] items-end gap-1.5 pt-6 pb-6">
+          {/* Background Guide Lines */}
+          <div className="pointer-events-none absolute inset-x-0 top-6 bottom-6 flex flex-col justify-between -z-0">
+            <div className="w-full border-b border-dashed border-(--ui-stroke-tertiary)/25" />
+            <div className="w-full border-b border-dashed border-(--ui-stroke-tertiary)/20" />
+            <div className="w-full border-b border-(--ui-stroke-tertiary)/40" />
+          </div>
+
           {displayDaily.map((item, idx) => {
-            const inPct = (item.inputTokens / maxTokens) * 100
-            const outPct = (item.outputTokens / maxTokens) * 100
+            const totalTokens = (item.inputTokens || 0) + (item.outputTokens || 0)
+            const heightPct = totalTokens > 0 ? Math.max(5, Math.min(100, Math.round((totalTokens / maxTokens) * 100))) : 0
+            const inRatio = totalTokens > 0 ? Math.round(((item.inputTokens || 0) / totalTokens) * 100) : 50
+            const outRatio = totalTokens > 0 ? 100 - inRatio : 50
+            const isHovered = hoveredDay === item
 
             return (
               <div
                 key={idx}
-                className="group relative flex h-full flex-1 flex-col justify-end items-center cursor-pointer"
+                className="group relative z-10 flex h-full flex-1 flex-col justify-end items-center cursor-pointer"
                 onMouseEnter={() => setHoveredDay(item)}
                 onMouseLeave={() => setHoveredDay(null)}
               >
+                {/* 悬浮背景指示柱 */}
+                <div className="absolute inset-x-0 inset-y-0 rounded-md bg-(--ui-bg-quaternary)/0 transition-colors group-hover:bg-(--ui-bg-quaternary)/35 pointer-events-none -z-10" />
+
+                {/* 浮动数值 Tooltip (跟随当前柱) */}
+                {isHovered && (
+                  <div
+                    className={cn(
+                      "pointer-events-none absolute -top-12 z-30 flex flex-col items-center rounded-lg border border-(--ui-stroke-primary) bg-(--ui-bg-elevated) px-2.5 py-1 text-xs shadow-xl backdrop-blur-md animate-in fade-in zoom-in-95",
+                      idx < 2 ? "left-0" : idx > displayDaily.length - 3 ? "right-0" : "left-1/2 -translate-x-1/2"
+                    )}
+                  >
+                    <div className="font-semibold text-(--ui-text-primary) text-[11px] whitespace-nowrap">
+                      {item.day}
+                    </div>
+                    <div className="flex items-center gap-2.5 text-[10px] text-(--ui-text-secondary) whitespace-nowrap">
+                      <span className="flex items-center gap-1 text-(--ui-accent)">
+                        <span className="size-1.5 rounded-full bg-(--ui-accent)" />
+                        In: {compactNumber(item.inputTokens)}
+                      </span>
+                      <span className="flex items-center gap-1 text-emerald-500">
+                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                        Out: {compactNumber(item.outputTokens)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* 柱条 */}
-                <div className="flex w-full max-w-[18px] flex-col justify-end overflow-hidden rounded-t transition-all duration-200 group-hover:scale-y-105 group-hover:brightness-125">
+                {totalTokens > 0 ? (
                   <div
-                    style={{ height: `${Math.max(outPct, 2)}%` }}
-                    className="w-full bg-emerald-500/80 transition-all"
-                  />
-                  <div
-                    style={{ height: `${Math.max(inPct, 2)}%` }}
-                    className="w-full bg-(--ui-accent)/85 transition-all"
-                  />
-                </div>
+                    style={{ height: `${heightPct}%` }}
+                    className="flex w-full max-w-[18px] flex-col justify-end overflow-hidden rounded-t-[3px] shadow-xs transition-all duration-200 group-hover:brightness-110"
+                  >
+                    {/* Output Tokens (Top - Green) */}
+                    {item.outputTokens > 0 && (
+                      <div
+                        style={{ height: `${outRatio}%` }}
+                        className="w-full bg-emerald-500/85 transition-all shrink-0"
+                      />
+                    )}
+                    {/* Input Tokens (Bottom - Accent Blue) */}
+                    {item.inputTokens > 0 && (
+                      <div
+                        style={{ height: `${inRatio}%` }}
+                        className="w-full bg-(--ui-accent)/90 transition-all shrink-0"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-[2px] w-full max-w-[16px] rounded-full bg-(--ui-stroke-tertiary)/60 transition-colors group-hover:bg-(--ui-accent)/50" />
+                )}
 
                 {/* X 轴日期指示 */}
                 {(idx === 0 || idx === Math.floor(displayDaily.length / 2) || idx === displayDaily.length - 1) && (
@@ -137,19 +197,29 @@ export function HomeCharts({ dailyData, modelData, skillData, className }: HomeC
               </div>
             )
           })}
-
-          {/* 浮动数值 Tooltip */}
-          {hoveredDay && (
-            <div className="pointer-events-none absolute -top-2 left-1/2 -translate-x-1/2 rounded-md border border-(--ui-stroke-primary) bg-(--ui-bg-elevated) px-2.5 py-1 text-xs shadow-md backdrop-blur-md">
-              <div className="font-semibold text-(--ui-text-primary)">{hoveredDay.day}</div>
-              <div className="flex items-center gap-3 text-[11px] text-(--ui-text-secondary)">
-                <span className="text-(--ui-accent)">In: {compactNumber(hoveredDay.inputTokens)}</span>
-                <span className="text-emerald-500">Out: {compactNumber(hoveredDay.outputTokens)}</span>
-              </div>
-            </div>
-          )}
         </div>
-        <div className="h-4" />
+
+        {/* 底部关键指标小计 */}
+        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-(--ui-stroke-tertiary)/40 pt-3 text-center">
+          <div>
+            <span className="block text-[10px] text-(--ui-text-quaternary)">周期总输入</span>
+            <span className="font-mono text-xs font-semibold text-(--ui-text-primary)">
+              {compactNumber(totalInput)}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] text-(--ui-text-quaternary)">周期总输出</span>
+            <span className="font-mono text-xs font-semibold text-emerald-500">
+              {compactNumber(totalOutput)}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[10px] text-(--ui-text-quaternary)">最高单日</span>
+            <span className="font-mono text-xs font-semibold text-(--ui-accent)">
+              {compactNumber(maxTokens)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* 模型分布与技能调用排行 */}

@@ -611,10 +611,11 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
   return (
     <div
-      className="shrink-0 px-3 pt-2 bg-(--ui-bg-chrome) border-t border-(--ui-stroke-tertiary) relative"
-      style={{ paddingBottom: 'calc(0.5rem + var(--safe-area-bottom))' }}
+      className="shrink-0 w-full px-3 md:px-6 pb-4 pt-1 bg-gradient-to-t from-(--ui-bg-chrome) via-(--ui-bg-chrome) to-transparent relative z-20"
+      style={{ paddingBottom: 'calc(0.75rem + var(--safe-area-bottom))' }}
     >
-      {!connected && (
+      <div className="max-w-4xl mx-auto w-full relative">
+        {!connected && (
         <button
           className="mb-2 flex w-full items-center justify-between rounded-lg bg-(--ui-bg-card) px-3 py-1.5 text-xs text-(--ui-text-secondary) active:opacity-70 border border-(--ui-stroke-tertiary)"
           onClick={() => void reconnectGateway()}
@@ -739,10 +740,10 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
         </div>
       )}
 
-      {/* Main Single-Row Composer Card — Desktop input chrome */}
+      {/* Main Composer Card — Desktop rounded glass card */}
       <div
         className={cn(
-          'desktop-input-chrome flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition-colors',
+          'relative w-full rounded-2xl border border-(--ui-stroke-secondary) hover:border-(--ui-stroke-primary) bg-(--ui-bg-card) shadow-(--shadow-nous) transition-all focus-within:border-(--ui-accent) focus-within:ring-1 focus-within:ring-(--ui-accent)/20 backdrop-blur-md',
           isDraggingFiles && 'border-(--ui-accent) bg-(--ui-row-active-background)'
         )}
         onDragEnter={event => {
@@ -765,17 +766,7 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           onChange={e => void handleFileSelect(e)}
         />
 
-        {/* 1. Add Attachment (+) Button */}
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="p-1 rounded-md text-(--ui-text-tertiary) hover:text-(--ui-text-primary) shrink-0 active:scale-95 transition-transform"
-          title={t.composer.addAttachment}
-        >
-          <Codicon name="add" className="text-base" />
-        </button>
-
-        {/* 2. Main Input Textarea */}
+        {/* 1. Main Input Textarea */}
         <textarea
           ref={textareaRef}
           value={text}
@@ -786,32 +777,47 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           placeholder={connected ? placeholder : t.composer.placeholderConnecting}
           rows={1}
           className={cn(
-            'flex-1 min-w-0 resize-none bg-transparent border-none',
-            'px-1 py-1 text-xs leading-relaxed text-(--ui-text-primary)',
-            'placeholder:text-(--ui-text-quaternary)',
-            'focus:outline-none max-h-[120px] no-scrollbar'
+            'w-full min-h-[46px] max-h-[160px] resize-none bg-transparent',
+            'px-4 pt-3 pb-2 text-[0.875rem] leading-relaxed text-(--ui-text-primary)',
+            'placeholder:text-(--ui-text-quaternary) outline-none rounded-t-2xl no-scrollbar'
           )}
           disabled={!connected}
         />
 
-        {/* 3. Model Selector Dropdown Pill */}
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowModelPicker(!showModelPicker)}
-            className="flex items-center gap-0.5 px-1 py-1 rounded-md text-[0.7rem] text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-chrome) transition-colors font-medium whitespace-nowrap"
-          >
-            <span className="max-w-[4.5rem] sm:max-w-[8.5rem] truncate">
-              {displayModelName}{pillMeta ? ` · ${pillMeta}` : ''}
-            </span>
-            <Codicon name="chevron-down" className="text-[0.6rem] text-(--ui-text-quaternary)" />
-          </button>
+        {/* Bottom Controls Bar */}
+        <div className="flex items-center justify-between border-t border-(--ui-stroke-quaternary)/50 px-3 py-1.5 bg-(--ui-bg-card)/60 rounded-b-2xl">
+          {/* Left: Add Attachment (+) Button */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="size-7 rounded-lg text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) grid place-items-center transition-colors cursor-pointer"
+              title={t.composer.addAttachment}
+            >
+              <Codicon name="add" className="text-base" />
+            </button>
+          </div>
 
-          {/* Model Picker Modal Popover */}
-          {showModelPicker && (
-            <div className="absolute bottom-full right-0 mb-2 w-72 max-h-[60vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) shadow-(--shadow-nous) p-2.5 z-50 text-xs space-y-3">
-              <div>
-                <p className="text-[0.65rem] font-semibold text-(--ui-text-quaternary) uppercase tracking-wider mb-1.5">
+          {/* Right: Controls (Model, Dictation, Audio, Radio, Action) */}
+          <div className="flex items-center gap-1.5">
+            {/* Model Selector Dropdown Pill */}
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModelPicker(!showModelPicker)}
+                className="flex items-center gap-1.5 rounded-lg border border-(--ui-stroke-quaternary) bg-(--ui-bg-quaternary)/40 px-2.5 py-1 text-xs font-mono text-(--ui-text-secondary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors cursor-pointer"
+              >
+                <span className="max-w-[8rem] sm:max-w-[14rem] truncate font-medium">
+                  {displayModelName}{pillMeta ? ` · ${pillMeta}` : ''}
+                </span>
+                <Codicon name="chevron-down" className="text-[0.6rem] text-(--ui-text-quaternary)" />
+              </button>
+
+              {/* Model Picker Modal Popover */}
+              {showModelPicker && (
+                <div className="absolute bottom-full right-0 mb-2 w-72 max-h-[60vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-card) shadow-2xl p-2.5 z-50 text-xs space-y-3">
+                  <div>
+                    <p className="text-[0.65rem] font-semibold text-(--ui-text-quaternary) uppercase tracking-wider mb-1.5">
                   {t.composer.modelSection}
                 </p>
                 {modelProviders.length === 0 && (
@@ -981,21 +987,23 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
           <Codicon name="radio-tower" className="text-sm" />
         </button>
 
-        {/* 5. Circular Primary Button (Send / Stop) — matches Desktop */}
+        {/* 5. Action Button (Send / Stop / Queue / Steer) */}
         {busy ? (
           canSteer ? (
             <>
-              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) shrink-0" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
-              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-accent) shrink-0" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
-              <button type="button" onClick={handleSend} className="grid size-7 place-items-center rounded-full bg-(--ui-accent) text-white shrink-0" title={t.composer.steer}><Codicon name="arrow-up" className="text-sm" /></button>
+              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-lg border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) hover:bg-(--chrome-action-hover) shrink-0 transition-colors cursor-pointer" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
+              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-lg border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-accent) hover:bg-(--chrome-action-hover) shrink-0 transition-colors cursor-pointer" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
+              <button type="button" onClick={handleSend} className="grid size-7 place-items-center rounded-lg bg-(--ui-accent) text-white shrink-0 hover:opacity-90 transition-opacity cursor-pointer" title={t.composer.steer}><Codicon name="arrow-up" className="text-sm" /></button>
             </>
           ) : canQueue ? (
             <>
-              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) shrink-0" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
-              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-full bg-(--ui-accent) text-white shrink-0" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
+              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-lg border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) hover:bg-(--chrome-action-hover) shrink-0 transition-colors cursor-pointer" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
+              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-lg bg-(--ui-accent) text-white shrink-0 hover:opacity-90 transition-opacity cursor-pointer" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
             </>
           ) : (
-            <button type="button" onClick={onStop} className="size-7 rounded-full bg-(--ui-text-primary) text-(--ui-bg-card) grid place-items-center shrink-0 hover:opacity-90 active:scale-95 transition-all" title={t.composer.stop}><span className="size-2.5 rounded-xs bg-current" /></button>
+            <button type="button" onClick={onStop} className="size-7 rounded-lg bg-(--ui-red)/15 text-(--ui-red) hover:bg-(--ui-red)/25 grid place-items-center shrink-0 active:scale-95 transition-all cursor-pointer" title={t.composer.stop}>
+              <span className="size-2.5 rounded-xs bg-current" />
+            </button>
           )
         ) : (
           <button
@@ -1003,17 +1011,21 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
             disabled={!canSend}
             onClick={handleSend}
             className={cn(
-              'size-7 rounded-full grid place-items-center shrink-0 transition-all',
+              'size-7 rounded-lg grid place-items-center shrink-0 transition-all cursor-pointer',
               canSend
-                ? 'bg-(--ui-text-primary) text-(--ui-bg-card) hover:opacity-90 active:scale-95 shadow-xs'
-                : 'bg-(--ui-text-quaternary)/30 text-(--ui-text-quaternary) cursor-not-allowed'
+                ? 'bg-(--ui-base) text-(--ui-bg-card) hover:opacity-90 active:scale-95 shadow-xs'
+                : 'bg-(--ui-text-quaternary)/20 text-(--ui-text-quaternary) cursor-not-allowed'
             )}
             title={t.composer.send}
           >
             <Codicon name="arrow-up" className="text-sm font-bold" />
           </button>
         )}
+          </div>
+        </div>
       </div>
     </div>
-  )
+  </div>
+)
 }
+

@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useStore } from '@nanostores/react'
 import type { SessionInfo } from '@/types/hermes'
-import { ActionSheet, type ActionSheetAction } from '@/ui/ActionSheet'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import * as api from '@/gateway/api'
@@ -36,14 +35,17 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps) {
   const { t } = useI18n()
   const [search, setSearch] = useState('')
-  const [actionTarget, setActionTarget] = useState<SessionInfo | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState<SessionInfo | null>(null)
+  const [menuTarget, setMenuTarget] = useState<{ session: SessionInfo; pos: { x: number; y: number } } | null>(null)
   const [showMoreTools, setShowMoreTools] = useState(false)
   const [remoteSearch, setRemoteSearch] = useState<SessionInfo[] | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
 
   const toggleFolder = useCallback((name: string) => {
     setCollapsedFolders(prev => ({ ...prev, [name]: !prev[name] }))
+  }, [])
+
+  const handleOpenMenu = useCallback((session: SessionInfo, pos: { x: number; y: number }) => {
+    setMenuTarget({ session, pos })
   }, [])
 
   const normalizedSearch = search.trim().toLowerCase()
@@ -130,6 +132,7 @@ export function Sidebar(props: SidebarProps) {
     for (const session of interactiveSessions.filter(session => Boolean(session.cwd))) {
       const path = session.cwd!
       const name = path.split('/').filter(Boolean).pop() || 'default'
+      if (name.startsWith('.')) continue // Skip hidden directories like .hermes
       const existing = map.get(name)
       if (existing) {
         existing.sessions.push(session)
@@ -153,10 +156,6 @@ export function Sidebar(props: SidebarProps) {
     return [...groups.entries()]
   }, [messagingSessions])
 
-  const handleLongPress = useCallback((session: SessionInfo) => {
-    setActionTarget(session)
-  }, [])
-
   const togglePinned = useCallback(async (session: SessionInfo) => {
     try {
       await api.setSessionPinned(session._lineage_root_id ?? session.id, !session.pinned, session.profile)
@@ -166,25 +165,35 @@ export function Sidebar(props: SidebarProps) {
     }
   }, [props])
 
+  const handleArchive = useCallback(async (session: SessionInfo) => {
+    try {
+      await api.setSessionArchived(session._lineage_root_id ?? session.id, true, session.profile)
+      props.onRefresh()
+    } catch {
+      // Keep unchanged on failure
+    }
+  }, [props])
+
   const handleAction = useCallback(
-    async (actionId: string) => {
-      if (!actionTarget) return
-      const id = actionTarget._lineage_root_id ?? actionTarget.id
+    async (actionId: string, targetSession?: SessionInfo) => {
+      const session = targetSession ?? menuTarget?.session
+      if (!session) return
+      const id = session._lineage_root_id ?? session.id
       switch (actionId) {
         case 'pin':
           try {
-            await api.setSessionPinned(id, !actionTarget.pinned, actionTarget.profile)
+            await api.setSessionPinned(id, !session.pinned, session.profile)
             props.onRefresh()
           } catch { /* best effort */ }
           break
         case 'rename': {
-          const next = window.prompt(t.sidebar.renamePrompt, actionTarget.title ?? '')
+          const next = window.prompt(t.sidebar.renamePrompt, session.title ?? '')
 
-          if (next !== null && next.trim() && next.trim() !== actionTarget.title) {
+          if (next !== null && next.trim() && next.trim() !== session.title) {
             try {
-              await api.renameSession(id, next.trim(), actionTarget.profile)
+              await api.renameSession(id, next.trim(), session.profile)
 
-              if ($activeSessionId.get() === (actionTarget._lineage_root_id ?? actionTarget.id)) {
+              if ($activeSessionId.get() === id) {
                 $sessionTitle.set(next.trim())
               }
 
@@ -195,13 +204,13 @@ export function Sidebar(props: SidebarProps) {
         }
         case 'archive':
           try {
-            await api.setSessionArchived(id, true, actionTarget.profile)
+            await api.setSessionArchived(id, true, session.profile)
             props.onRefresh()
           } catch { /* best effort */ }
           break
         case 'unread':
           try {
-            await api.setSessionUnread(id, !actionTarget.unread, actionTarget.profile)
+            await api.setSessionUnread(id, !session.unread, session.profile)
             props.onRefresh()
           } catch { /* best effort */ }
           break
@@ -219,52 +228,31 @@ export function Sidebar(props: SidebarProps) {
           }
           break
         case 'branch':
-          if (props.onBranch ? !await props.onBranch(id, actionTarget.profile) : !await branchStoredSession(id)) {
+          if (props.onBranch ? !await props.onBranch(id, session.profile) : !await branchStoredSession(id)) {
             window.alert('无法从该会话创建分支。')
           }
           break
         case 'export':
           try {
-            await exportSession(id, actionTarget)
+            await exportSession(id, session)
           } catch {
             window.alert('无法导出该会话。')
           }
           break
-        case 'delete':
-          setConfirmDelete(actionTarget)
+        case 'delete': {
+          const title = session.title || session.preview || t.sidebar.untitled
+          if (window.confirm(t.sidebar.deleteConfirm(title))) {
+            try {
+              await api.deleteSession(id, session.profile)
+              props.onRefresh()
+            } catch { /* best effort */ }
+          }
           break
+        }
       }
     },
-    [actionTarget, props]
+    [menuTarget, props, t]
   )
-
-  const confirmDeleteAction = useCallback(
-    async (confirmed: boolean) => {
-      if (confirmed && confirmDelete) {
-        const id = confirmDelete._lineage_root_id ?? confirmDelete.id
-        try {
-          await api.deleteSession(id, confirmDelete.profile)
-          props.onRefresh()
-        } catch { /* best effort */ }
-      }
-      setConfirmDelete(null)
-    },
-    [confirmDelete, props]
-  )
-
-  const actions: ActionSheetAction[] = actionTarget
-    ? [
-        { id: 'pin', label: actionTarget.pinned ? t.sidebar.unpin : t.sidebar.pin },
-        { id: 'unread', label: actionTarget.unread ? t.sidebar.markRead : t.sidebar.markUnread },
-        { id: 'copy-id', label: t.sidebar.copyId },
-        { id: 'pull-request', label: t.sidebar.openPullRequest },
-        { id: 'branch', label: t.sidebar.branch },
-        { id: 'export', label: t.sidebar.export },
-        { id: 'rename', label: t.sidebar.rename },
-        { id: 'archive', label: t.sidebar.archive },
-        { id: 'delete', label: t.sidebar.deleteSession, destructive: true }
-      ]
-    : []
 
   const [activeTab, setActiveTab] = useState<'sessions' | 'bots'>('sessions')
 
@@ -449,8 +437,9 @@ export function Sidebar(props: SidebarProps) {
                 session={session}
                 active={props.activeSessionId === (session._lineage_root_id ?? session.id)}
                 onSelect={props.onSelect}
-                onLongPress={handleLongPress}
+                onMenu={handleOpenMenu}
                 onTogglePin={togglePinned}
+                onArchive={handleArchive}
                 showMeta={props.showDesktopMeta}
               />
             ))
@@ -465,64 +454,71 @@ export function Sidebar(props: SidebarProps) {
         {projects.length > 0 && (
           <SidebarSection icon={<Codicon name="folder" className="text-xs" />} title={t.sidebar.projects}>
             {/* Home bucket for detached sessions */}
-            <div className="mb-2">
-              <div
-                className="group flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) cursor-pointer select-none"
-                onClick={() => toggleFolder('__home__')}
-              >
-                <div className="flex items-center gap-1.5 truncate min-w-0">
-                  <Codicon
-                    name={collapsedFolders['__home__'] ? 'chevron-right' : 'chevron-down'}
-                    className="text-[0.65rem] text-(--ui-text-tertiary) shrink-0 transition-transform"
-                  />
-                  <Codicon name="home" className="text-xs text-(--ui-text-quaternary) shrink-0" />
-                  <span className="font-medium text-(--ui-text-secondary)">{t.sidebar.home}</span>
-                  {homeSessions.length > 0 && (
-                    <span className="text-[0.62rem] text-(--ui-text-quaternary)">({homeSessions.length})</span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation()
-                    props.onNew()
-                  }}
-                  className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition"
-                  title={t.sidebar.newSession}
+            {homeSessions.length > 0 && (
+              <div className="mb-1.5">
+                <div
+                  className="group flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) cursor-pointer select-none"
+                  onClick={() => toggleFolder('__home__')}
                 >
-                  <Codicon name="add" className="text-xs" />
-                </button>
+                  <div className="flex items-center gap-1.5 truncate min-w-0 flex-1">
+                    <Codicon name="home" className="text-xs text-(--ui-text-tertiary) shrink-0" />
+                    <span className="truncate font-medium text-(--ui-text-primary)">{t.sidebar.home}</span>
+                    <span className="text-[0.62rem] text-(--ui-text-quaternary) font-mono">({homeSessions.length})</span>
+                    <Codicon
+                      name={collapsedFolders['__home__'] ? 'chevron-right' : 'chevron-down'}
+                      className="text-[0.62rem] text-(--ui-text-quaternary) opacity-0 transition-opacity group-hover:opacity-100 shrink-0 ml-auto"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation()
+                      props.onNew()
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition ml-1"
+                    title={t.sidebar.newSession}
+                  >
+                    <Codicon name="add" className="text-xs" />
+                  </button>
+                </div>
+                {!collapsedFolders['__home__'] && (
+                  <div className="ml-3.5 pl-2 border-l border-(--ui-stroke-quaternary)/50 mt-0.5">
+                    <SessionTree
+                      sessions={homeSessions}
+                      activeSessionId={props.activeSessionId}
+                      onSelect={props.onSelect}
+                      onMenu={handleOpenMenu}
+                      onTogglePin={togglePinned}
+                      onArchive={handleArchive}
+                      nested
+                      showMeta={props.showDesktopMeta}
+                    />
+                  </div>
+                )}
               </div>
-              {!collapsedFolders['__home__'] && homeSessions.length > 0 && (
-                <SessionTree
-                  sessions={homeSessions}
-                  activeSessionId={props.activeSessionId}
-                  onSelect={props.onSelect}
-                  onLongPress={handleLongPress}
-                  onTogglePin={togglePinned}
-                  nested
-                  showMeta={props.showDesktopMeta}
-                />
-              )}
-            </div>
+            )}
 
             {/* Project folders */}
             {projects.map(([name, { path, sessions }]) => {
               const isCollapsed = Boolean(collapsedFolders[name])
               return (
-                <div key={name} className="mt-1 mb-2">
+                <div key={name} className="mt-0.5 mb-1.5">
                   <div
                     className="group flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) cursor-pointer select-none"
                     onClick={() => toggleFolder(name)}
+                    title={path}
                   >
-                    <div className="flex items-center gap-1.5 truncate min-w-0">
+                    <div className="flex items-center gap-1.5 truncate min-w-0 flex-1">
+                      <Codicon
+                        name={isCollapsed ? 'folder' : 'folder-opened'}
+                        className="text-xs text-(--ui-text-tertiary) shrink-0"
+                      />
+                      <span className="truncate font-medium text-(--ui-text-primary)">{name}</span>
+                      <span className="text-[0.62rem] text-(--ui-text-quaternary) font-mono">({sessions.length})</span>
                       <Codicon
                         name={isCollapsed ? 'chevron-right' : 'chevron-down'}
-                        className="text-[0.65rem] text-(--ui-text-tertiary) shrink-0 transition-transform"
+                        className="text-[0.62rem] text-(--ui-text-quaternary) opacity-0 transition-opacity group-hover:opacity-100 shrink-0 ml-auto"
                       />
-                      <Codicon name="folder" className="text-xs text-(--ui-text-tertiary) shrink-0" />
-                      <span className="truncate font-medium">{name}</span>
-                      <span className="text-[0.62rem] text-(--ui-text-quaternary)">({sessions.length})</span>
                     </div>
                     <button
                       type="button"
@@ -530,22 +526,25 @@ export function Sidebar(props: SidebarProps) {
                         e.stopPropagation()
                         props.onNew(path)
                       }}
-                      className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition"
+                      className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition ml-1"
                       title={t.desktop.commands.newProjectSession}
                     >
                       <Codicon name="add" className="text-xs" />
                     </button>
                   </div>
                   {!isCollapsed && (
-                    <SessionTree
-                      sessions={sessions}
-                      activeSessionId={props.activeSessionId}
-                      onSelect={props.onSelect}
-                      onLongPress={handleLongPress}
-                      onTogglePin={togglePinned}
-                      nested
-                      showMeta={props.showDesktopMeta}
-                    />
+                    <div className="ml-3.5 pl-2 border-l border-(--ui-stroke-quaternary)/50 mt-0.5">
+                      <SessionTree
+                        sessions={sessions}
+                        activeSessionId={props.activeSessionId}
+                        onSelect={props.onSelect}
+                        onMenu={handleOpenMenu}
+                        onTogglePin={togglePinned}
+                        onArchive={handleArchive}
+                        nested
+                        showMeta={props.showDesktopMeta}
+                      />
+                    </div>
                   )}
                 </div>
               )
@@ -560,8 +559,9 @@ export function Sidebar(props: SidebarProps) {
               sessions={interactiveSessions.slice(0, 30)}
               activeSessionId={props.activeSessionId}
               onSelect={props.onSelect}
-              onLongPress={handleLongPress}
+              onMenu={handleOpenMenu}
               onTogglePin={togglePinned}
+              onArchive={handleArchive}
               showMeta={props.showDesktopMeta}
             />
           </SidebarSection>
@@ -573,8 +573,9 @@ export function Sidebar(props: SidebarProps) {
               sessions={cronSessions}
               activeSessionId={props.activeSessionId}
               onSelect={props.onSelect}
-              onLongPress={handleLongPress}
+              onMenu={handleOpenMenu}
               onTogglePin={togglePinned}
+              onArchive={handleArchive}
               showMeta={props.showDesktopMeta}
             />
           </SidebarSection>
@@ -589,8 +590,9 @@ export function Sidebar(props: SidebarProps) {
                   sessions={platformSessions}
                   activeSessionId={props.activeSessionId}
                   onSelect={props.onSelect}
-                  onLongPress={handleLongPress}
+                  onMenu={handleOpenMenu}
                   onTogglePin={togglePinned}
+                  onArchive={handleArchive}
                   showMeta={props.showDesktopMeta}
                 />
               </div>
@@ -632,21 +634,14 @@ export function Sidebar(props: SidebarProps) {
         </div>
       )}
 
-      {/* Action Sheets */}
-      <ActionSheet
-        open={actionTarget !== null}
-        onClose={() => setActionTarget(null)}
-        title={actionTarget?.title ?? undefined}
-        actions={actions}
-        onAction={id => void handleAction(id)}
-      />
-
-      <ActionSheet
-        open={confirmDelete !== null}
-        onClose={() => setConfirmDelete(null)}
-        title={t.sidebar.deleteConfirm(confirmDelete?.title ?? t.sidebar.untitled)}
-        actions={[{ id: 'confirm', label: t.sidebar.deletePermanently, destructive: true }]}
-        onAction={id => void confirmDeleteAction(id === 'confirm')}
+      {/* Floating Session Menu / Popover */}
+      <SessionFloatingMenu
+        target={menuTarget}
+        onClose={() => setMenuTarget(null)}
+        onAction={(actionId, session) => {
+          setMenuTarget(null)
+          void handleAction(actionId, session)
+        }}
       />
     </div>
   )
@@ -679,16 +674,18 @@ function SessionTree({
   sessions,
   activeSessionId,
   onSelect,
-  onLongPress,
+  onMenu,
   onTogglePin,
+  onArchive,
   nested = false,
   showMeta = false
 }: {
   sessions: SessionInfo[]
   activeSessionId: string | null
   onSelect: (id: string, profile?: string) => void
-  onLongPress: (session: SessionInfo) => void
+  onMenu: (session: SessionInfo, pos: { x: number; y: number }) => void
   onTogglePin: (session: SessionInfo) => void
+  onArchive: (session: SessionInfo) => void
   nested?: boolean
   showMeta?: boolean
 }) {
@@ -713,8 +710,9 @@ function SessionTree({
           session={session}
           active={activeSessionId === (session._lineage_root_id ?? session.id)}
           onSelect={onSelect}
-          onLongPress={onLongPress}
+          onMenu={onMenu}
           onTogglePin={onTogglePin}
+          onArchive={onArchive}
           nested={nested || depth > 0}
           showMeta={showMeta}
         />
@@ -723,23 +721,24 @@ function SessionTree({
     )
   }
 
-  return <>{roots.map(session => render(session, 0))}</>
+  return <div className="flex flex-col gap-0.5">{roots.map(session => render(session, 0))}</div>
 }
 
 function SessionItem({
   session,
   active,
   onSelect,
-  onLongPress,
+  onMenu,
   onTogglePin,
-  nested = false,
-  showMeta = false
+  onArchive,
+  nested = false
 }: {
   session: SessionInfo
   active: boolean
   onSelect: (id: string, profile?: string) => void
-  onLongPress: (session: SessionInfo) => void
+  onMenu: (session: SessionInfo, pos: { x: number; y: number }) => void
   onTogglePin: (session: SessionInfo) => void
+  onArchive: (session: SessionInfo) => void
   nested?: boolean
   showMeta?: boolean
 }) {
@@ -747,15 +746,20 @@ function SessionItem({
   const sessionStates = useStore($sessionStates)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
+  const touchStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
   const storedId = session._lineage_root_id ?? session.id
   const dotState = sessionStates.get(storedId) ?? sessionStates.get(session.id) ?? null
 
-  const handleTouchStart = () => {
+  const handleTouchStart = (e: React.TouchEvent) => {
     didLongPress.current = false
+    const touch = e.touches[0]
+    if (touch) {
+      touchStartPos.current = { x: touch.clientX, y: touch.clientY }
+    }
     longPressTimer.current = setTimeout(() => {
       didLongPress.current = true
-      onLongPress(session)
+      onMenu(session, touchStartPos.current)
     }, 500)
   }
 
@@ -780,7 +784,6 @@ function SessionItem({
     onSelect(id, session.profile)
   }
 
-  const contextName = session.cwd ? session.cwd.split('/').filter(Boolean).pop() : session.source ? session.source : (session.profile || 'default')
   const title = session.title || session.preview || t.sidebar.untitled
   const age = formatAge(session.last_active, t.sidebar.justNow)
 
@@ -797,79 +800,254 @@ function SessionItem({
       }}
       onContextMenu={event => {
         event.preventDefault()
-        onLongPress(session)
+        event.stopPropagation()
+        onMenu(session, { x: event.clientX, y: event.clientY })
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
+      title={title}
       className={cn(
-        'group relative block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors duration-100 cursor-pointer border',
+        'group relative flex items-center min-h-[1.875rem] w-full rounded-md px-2 py-1 text-left text-xs transition-colors duration-75 cursor-pointer select-none gap-2',
         active
-          ? 'bg-(--ui-row-active-background) border-(--ui-stroke-tertiary)'
-          : cn('border-transparent hover:bg-(--chrome-action-hover) hover:border-(--ui-stroke-quaternary)', session.unread && 'font-medium'),
-        nested && 'pl-5'
+          ? 'bg-(--ui-row-active-background) text-(--ui-text-primary) font-medium'
+          : cn('text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)', session.unread && 'font-medium text-(--ui-text-primary)'),
+        nested && 'pl-2'
       )}
     >
-      {/* Line 1: Lead dot + context + age / action button */}
-      <div className="flex items-center justify-between gap-1 text-[0.6875rem] text-(--ui-text-tertiary)">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span
-            className={cn(
-              'size-1.5 shrink-0 rounded-full',
-              dotState === 'needs-input'
-                ? 'bg-amber-500'
-                : dotState === 'working'
-                ? 'bg-(--ui-accent) animate-pulse'
-                : session.is_active
-                ? 'bg-(--ui-accent)'
-                : 'bg-(--ui-text-quaternary)'
-            )}
-          />
-          {session.unread && <span className="size-1.5 shrink-0 rounded-full bg-(--ui-accent)" aria-label="Unread" />}
-          <span className="truncate font-mono text-[0.625rem] text-(--ui-text-tertiary)">
-            {contextName}
-          </span>
-        </div>
+      {/* Lead status dot */}
+      <span
+        className={cn(
+          'size-1.5 shrink-0 rounded-full',
+          dotState === 'needs-input'
+            ? 'bg-amber-500'
+            : dotState === 'working'
+            ? 'bg-(--ui-accent) animate-pulse'
+            : session.is_active
+            ? 'bg-(--ui-accent)'
+            : 'bg-(--ui-text-quaternary) group-hover:bg-(--ui-text-tertiary)'
+        )}
+      />
+      {session.unread && <span className="size-1.5 shrink-0 rounded-full bg-(--ui-accent)" aria-label="Unread" />}
 
-        <div className="relative shrink-0 flex items-center min-w-[2.2rem] justify-end">
-          <span className="text-[0.625rem] text-(--ui-text-quaternary) group-hover:opacity-0 transition-opacity">
+      {/* Title */}
+      <span className="truncate flex-1 min-w-0 text-xs leading-normal">
+        {title}
+      </span>
+
+      {/* Trailing slot: right-aligned */}
+      <div className="shrink-0 flex items-center justify-end">
+        {/* Pinned status glyph (shown when pinned and not hovering) */}
+        {session.pinned && (
+          <Codicon
+            name="pinned"
+            className="text-[0.65rem] text-(--ui-text-tertiary) shrink-0 mr-1 group-hover:hidden"
+          />
+        )}
+
+        {/* Age: flush to the right edge when not hovering */}
+        {age && (
+          <span className="text-[0.65rem] text-(--ui-text-quaternary) font-mono group-hover:hidden whitespace-nowrap">
             {age}
           </span>
+        )}
+
+        {/* Hover action buttons: only squeezed in on mouse hover */}
+        <div className="hidden group-hover:flex items-center gap-0.5">
           <button
             type="button"
             onClick={e => {
               e.stopPropagation()
-              onLongPress(session)
+              void onTogglePin(session)
             }}
-            title="会话选项"
-            className="absolute right-0 opacity-0 group-hover:opacity-100 size-4.5 rounded flex items-center justify-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-quaternary) transition-all"
+            title={session.pinned ? t.sidebar.unpin : t.sidebar.pin}
+            className="size-5 rounded flex items-center justify-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
           >
-            <Codicon name="ellipsis" className="text-xs" />
+            <Codicon name={session.pinned ? 'pinned' : 'pin'} className="text-[0.7rem]" />
+          </button>
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              void onArchive(session)
+            }}
+            title={t.sidebar.archive}
+            className="size-5 rounded flex items-center justify-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+          >
+            <Codicon name="archive" className="text-[0.7rem]" />
+          </button>
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              const rect = e.currentTarget.getBoundingClientRect()
+              onMenu(session, { x: rect.right - 170, y: rect.bottom + 4 })
+            }}
+            title={t.sidebar.moreTools}
+            className="size-5 rounded flex items-center justify-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+          >
+            <Codicon name="ellipsis" className="text-[0.7rem]" />
           </button>
         </div>
       </div>
+    </div>
+  )
+}
 
-      {/* Line 2: Title + preview */}
-      <div className="mt-0.5 min-w-0">
-        <div className={cn(
-          'truncate text-xs font-medium leading-snug',
-          active ? 'text-(--ui-accent)' : 'text-(--ui-text-primary)'
-        )}>
-          {title}
-        </div>
-        {session.preview && session.title ? (
-          <div className="truncate text-[0.65rem] text-(--ui-text-quaternary) mt-0.5 leading-tight">
-            {session.preview}
-          </div>
-        ) : null}
+interface SessionFloatingMenuProps {
+  target: { session: SessionInfo; pos: { x: number; y: number } } | null
+  onClose: () => void
+  onAction: (actionId: string, session: SessionInfo) => void
+}
+
+function SessionFloatingMenu({ target, onClose, onAction }: SessionFloatingMenuProps) {
+  const { t } = useI18n()
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    if (!target) {
+      setCoords(null)
+      return
+    }
+
+    const menuEl = menuRef.current
+    const width = menuEl?.offsetWidth || 176
+    const height = menuEl?.offsetHeight || 280
+    const padding = 8
+
+    let x = target.pos.x
+    let y = target.pos.y
+
+    if (x + width > window.innerWidth - padding) {
+      x = Math.max(padding, window.innerWidth - width - padding)
+    }
+    if (y + height > window.innerHeight - padding) {
+      y = Math.max(padding, window.innerHeight - height - padding)
+    }
+
+    setCoords({ x: Math.round(x), y: Math.round(y) })
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    const handleScroll = () => {
+      onClose()
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', onClose)
+    window.addEventListener('scroll', handleScroll, true)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', onClose)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [target, onClose])
+
+  if (!target) return null
+  const { session } = target
+
+  const menuItems: Array<{
+    id: string
+    label: string
+    icon: string
+    destructive?: boolean
+    separator?: boolean
+  }> = [
+    {
+      id: 'pin',
+      label: session.pinned ? t.sidebar.unpin : t.sidebar.pin,
+      icon: session.pinned ? 'pinned' : 'pin'
+    },
+    {
+      id: 'rename',
+      label: t.sidebar.rename,
+      icon: 'edit'
+    },
+    {
+      id: 'unread',
+      label: session.unread ? t.sidebar.markRead : t.sidebar.markUnread,
+      icon: session.unread ? 'pass' : 'mail'
+    },
+    {
+      id: 'branch',
+      label: t.sidebar.branch,
+      icon: 'git-branch'
+    },
+    {
+      id: 'copy-id',
+      label: t.sidebar.copyId,
+      icon: 'copy'
+    },
+    {
+      id: 'export',
+      label: t.sidebar.export,
+      icon: 'cloud-download'
+    },
+    {
+      id: 'archive',
+      label: t.sidebar.archive,
+      icon: 'archive'
+    },
+    {
+      id: 'delete',
+      label: t.sidebar.deletePermanently,
+      icon: 'trash',
+      destructive: true,
+      separator: true
+    }
+  ]
+
+  return (
+    <div
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        left: coords ? `${coords.x}px` : `${target.pos.x}px`,
+        top: coords ? `${coords.y}px` : `${target.pos.y}px`,
+        zIndex: 100,
+        opacity: coords ? 1 : 0
+      }}
+      className="min-w-[170px] rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-elevated) p-1 shadow-2xl backdrop-blur-md transition-opacity duration-75 select-none"
+      onClick={e => e.stopPropagation()}
+      onContextMenu={e => e.preventDefault()}
+    >
+      <div className="px-2 py-1 text-[0.65rem] font-medium text-(--ui-text-quaternary) truncate border-b border-(--ui-stroke-quaternary) mb-1">
+        {session.title || session.preview || t.sidebar.untitled}
       </div>
-
-      {/* Line 3: Model & Usage footer */}
-      {showMeta && (session.model || session.input_tokens || session.output_tokens || session.actual_cost_usd || session.estimated_cost_usd) ? (
-        <div className="mt-1 truncate text-[0.6rem] text-(--ui-text-tertiary) flex items-center gap-1 font-mono">
-          <span>{[session.profile && session.profile !== 'default' ? session.profile : null, session.model, formatSessionUsage(session)].filter(Boolean).join(' · ')}</span>
-        </div>
-      ) : null}
+      {menuItems.map(item => (
+        <Fragment key={item.id}>
+          {item.separator && <div className="my-1 h-px bg-(--ui-stroke-quaternary)" />}
+          <button
+            type="button"
+            onClick={() => onAction(item.id, session)}
+            className={cn(
+              'flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors cursor-pointer',
+              item.destructive
+                ? 'text-red-500 hover:bg-red-500/10'
+                : 'text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)'
+            )}
+          >
+            <Codicon name={item.icon} className="text-xs shrink-0" />
+            <span className="truncate flex-1">{item.label}</span>
+          </button>
+        </Fragment>
+      ))}
     </div>
   )
 }
@@ -881,15 +1059,6 @@ function formatAge(epochSeconds: number, justNow: string): string {
   if (diff < 3600) return `${Math.max(1, Math.floor(diff / 60))}m`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`
   return `${Math.floor(diff / 86400)}d`
-}
-
-function formatSessionUsage(session: SessionInfo): string {
-  const tokens = Math.max(0, session.input_tokens || 0) + Math.max(0, session.output_tokens || 0)
-  const cost = session.actual_cost_usd ?? session.estimated_cost_usd
-  const values: string[] = []
-  if (tokens) values.push(`${tokens >= 1_000 ? `${(tokens / 1_000).toFixed(tokens >= 10_000 ? 0 : 1)}k` : tokens} tok`)
-  if (typeof cost === 'number' && cost > 0) values.push(`$${cost.toFixed(cost >= 1 ? 2 : 3)}`)
-  return values.join(' · ')
 }
 
 /** Browser-safe export of a Gateway transcript. Fetch pages newest-first and
