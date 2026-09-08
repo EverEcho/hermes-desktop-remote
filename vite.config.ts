@@ -75,7 +75,7 @@ function dynamicGatewayProxy(): Plugin {
       return
     }
 
-    ;(req as import('http').IncomingMessage & { __hermesTarget?: string }).__hermesTarget = target
+    ; (req as import('http').IncomingMessage & { __hermesTarget?: string }).__hermesTarget = target
     delete req.headers[TARGET_HEADER]
     const requestUrl = new URL(req.url || '/', 'http://vite.local')
     requestUrl.searchParams.delete(TARGET_QUERY)
@@ -133,6 +133,9 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(import.meta.dirname, './src')
       },
       dedupe: ['react', 'react-dom']
+    },
+    optimizeDeps: {
+      entries: ['index.html']
     },
     server: {
       host: '0.0.0.0',

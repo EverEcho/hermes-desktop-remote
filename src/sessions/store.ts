@@ -43,11 +43,15 @@ export interface QueuedPrompt {
  * desktop tab switch or mobile drawer does not lose a follow-up. */
 export const $queuedPrompts = atom<Record<string, QueuedPrompt[]>>({})
 
-const MESSAGING_SOURCES = [
+export const MESSAGING_SOURCES = [
   'telegram', 'discord', 'slack', 'mattermost', 'matrix', 'signal', 'whatsapp',
   'bluebubbles', 'photon', 'homeassistant', 'email', 'sms', 'webhook',
-  'api_server', 'weixin', 'wecom', 'qqbot', 'yuanbao', 'dingtalk', 'feishu'
+  'api_server', 'weixin', 'wecom', 'wechat', 'wechatpad', 'qqbot', 'yuanbao', 'dingtalk', 'feishu'
 ]
+export const MESSAGING_SOURCE_SET = new Set(MESSAGING_SOURCES)
+export function isMessagingSessionSource(source?: string | null): boolean {
+  return Boolean(source && MESSAGING_SOURCE_SET.has(source))
+}
 const RECENT_EXCLUDED_SOURCES = ['cron', 'kanban', 'subagent', 'tool', ...MESSAGING_SOURCES]
 const MESSAGING_EXCLUDED_SOURCES = ['cron', 'cli', 'codex', 'desktop', 'gateway', 'kanban', 'local', 'tui']
 

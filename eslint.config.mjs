@@ -24,6 +24,6 @@ export default tseslint.config(
     }
   },
   {
-    ignores: ['dist/', 'android/', 'ios/', 'node_modules/']
+    ignores: ['dist/', 'android/', 'ios/', 'node_modules/', 'doc/']
   }
 )

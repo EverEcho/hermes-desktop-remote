@@ -1,4 +1,6 @@
+import { useStore } from '@nanostores/react'
 import type { SessionInfo } from '@/types/hermes'
+import { $sessionTitle } from '@/sessions/store'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 
@@ -23,15 +25,16 @@ export function DesktopSessionTabs({
   sessions,
   tabIds
 }: DesktopSessionTabsProps) {
+  const currentTitle = useStore($sessionTitle)
   if (!tabIds.length) return null
   const byId = new Map(sessions.map(session => [session._lineage_root_id ?? session.id, session]))
 
   return (
-    <div className="flex h-8 shrink-0 items-end gap-px overflow-x-auto border-b border-(--ui-stroke-tertiary) bg-(--ui-bg-chrome) px-1 no-scrollbar">
+    <div className="flex h-8 shrink-0 items-end gap-px overflow-x-auto border-b border-(--ui-stroke-tertiary) bg-(--ui-bg-chrome) px-1.5 no-scrollbar">
       {tabIds.map(id => {
         const session = byId.get(id)
         const active = id === activeSessionId
-        const title = session?.title?.trim() || session?.preview?.trim() || 'Untitled conversation'
+        const title = session?.title?.trim() || session?.preview?.trim() || (active ? currentTitle?.trim() : null) || 'Untitled conversation'
         return (
           <div
             className={cn(

@@ -11,7 +11,11 @@ export const zh: Catalog = {
     save: '保存',
     saving: '保存中…',
     refresh: '刷新',
-    cancel: '取消'
+    cancel: '取消',
+    copy: '复制',
+    copied: '已复制',
+    expand: '展开',
+    collapse: '收起'
   },
   errors: {
     diskFull: '磁盘已满 — 请腾出一些空间后再试。'
@@ -120,6 +124,9 @@ export const zh: Catalog = {
     messaging: '消息平台',
     artifacts: '产物',
     profiles: '配置文件',
+    newProfile: '新建智能体',
+    manageProfiles: '管理智能体',
+    color: '主题色',
     allProfileSessions: '全部 Profile 会话',
     currentProfileSessions: '当前 Profile 会话',
     webhooks: 'Webhooks',
@@ -642,5 +649,46 @@ export const zh: Catalog = {
     diff: '差异',
     diffEmpty: '暂无差异',
     clean: '工作区干净'
+  },
+  profiles: {
+    title: '智能体配置',
+    description: '智能体（Profiles）由连接的网关统一存储与管理。',
+    namePlaceholder: '新智能体名称',
+    create: '创建',
+    import: '导入',
+    startEmpty: '空白创建',
+    cloneFrom: (name: string) => `克隆自 ${name}`,
+    noSkills: '不包含技能',
+    loadingProfiles: '正在加载智能体…',
+    defaultProfile: '默认智能体',
+    activeBadge: '当前使用',
+    rename: '重命名',
+    soul: '人设 (Soul)',
+    setup: '安装命令',
+    export: '导出',
+    delete: '删除',
+    noProfiles: '未找到智能体',
+    exportArchivePath: '网关上的智能体档案保存路径',
+    importArchivePath: '网关上的智能体档案路径 (.tar.gz)',
+    importNewName: '新智能体名称（可选）',
+    setupCommandTitle: (name: string) => `网关上 ${name} 的安装配置命令`,
+    renamePrompt: '重命名智能体',
+    deleteConfirm: (name: string) => `确定要删除智能体 “${name}” 吗？`,
+    loadingSoul: '正在加载 SOUL.md…',
+    soulPlaceholder: '智能体人设提示词与行为规范',
+    saveSoul: '保存 SOUL.md',
+    savingSoul: '保存中…',
+    errors: {
+      loadProfiles: '无法加载智能体列表',
+      createProfile: '创建智能体失败',
+      switchProfile: '切换智能体失败',
+      renameProfile: '重命名智能体失败',
+      deleteProfile: '删除智能体失败',
+      exportProfile: '导出智能体档案失败',
+      importProfile: '导入智能体档案失败',
+      loadSetupCommand: '无法加载安装命令',
+      loadSoul: '无法加载人设 SOUL.md',
+      saveSoul: '保存人设 SOUL.md 失败'
+    }
   }
 } satisfies Catalog

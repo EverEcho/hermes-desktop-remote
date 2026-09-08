@@ -206,6 +206,211 @@ function EditMessageSheet({ message, onClose }: { message: MobileMessage; onClos
   )
 }
 
+function ProcessNotificationNote({ text }: { text: string }) {
+  const body = text.replace(/^\[IMPORTANT:\s*/, '').replace(/\]$/, '')
+  const newline = body.indexOf('\n')
+  const headline = (newline === -1 ? body : body.slice(0, newline)).trim()
+  const detail = newline === -1 ? '' : body.slice(newline + 1).trim()
+
+  return (
+    <div className="my-2 max-w-4xl mx-auto w-full rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card)/70 p-2.5 text-xs text-(--ui-text-tertiary) shadow-xs">
+      <div className="flex items-center gap-2 font-medium text-(--ui-text-secondary)">
+        <Codicon name="history" className="text-sm text-(--ui-accent) shrink-0" />
+        <span className="truncate flex-1">{headline}</span>
+      </div>
+      {detail && (
+        <details className="mt-1.5 pl-5">
+          <summary className="cursor-pointer select-none text-[0.68rem] text-(--ui-text-quaternary) hover:text-(--ui-text-secondary) font-medium">
+            指令详情与参数
+          </summary>
+          <pre className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-(--ui-bg-chrome)/70 border border-(--ui-stroke-quaternary) p-2 font-mono text-[0.68rem] text-(--ui-text-tertiary) no-scrollbar">
+            {detail}
+          </pre>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function UserMessageRow({
+  message,
+  onEditUser,
+  onPreview
+}: {
+  message: MobileMessage
+  onEditUser?: () => void
+  onPreview?: (target: { kind: 'file' | 'url'; value: string }) => void
+}) {
+  const { t } = useI18n()
+  const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const textPart = message.parts?.find(p => p.type === 'text')?.text || ''
+
+  if (textPart.startsWith('[CONTEXT COMPACTION') || textPart.startsWith('[SYSTEM]')) {
+    return (
+      <div className="my-3 rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-3 text-xs text-(--ui-text-tertiary) leading-relaxed">
+        {textPart}
+      </div>
+    )
+  }
+
+  if (
+    textPart.startsWith('[IMPORTANT: Background process') ||
+    textPart.startsWith('[IMPORTANT: You are running as a scheduled cron job') ||
+    (textPart.startsWith('[IMPORTANT:') && (textPart.includes('DELIVERY:') || textPart.includes('SILENT:')))
+  ) {
+    return <ProcessNotificationNote text={textPart} />
+  }
+
+  const isLong = textPart.length > 300 || (textPart.match(/\n/g) || []).length >= 4
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(textPart)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div className="sticky top-0 z-10 bg-(--ui-bg-chrome) py-1.5 w-full group/user-msg">
+      <div
+        className={cn(
+          'relative w-full rounded-xl border bg-(--ui-bg-card) p-3 text-left shadow-xs transition-colors',
+          message.failed ? 'border-(--ui-red)' : 'border-(--ui-stroke-tertiary)'
+        )}
+      >
+        <div className={cn(isLong && !expanded && 'max-h-24 overflow-hidden relative')}>
+          <MarkdownContent
+            content={textPart}
+            className="text-(--conversation-text-font-size) leading-[var(--conversation-line-height)] text-(--ui-text-primary)"
+            onPreview={onPreview}
+          />
+          {isLong && !expanded && (
+            <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-(--ui-bg-card) to-transparent pointer-events-none" />
+          )}
+        </div>
+
+        <div className="mt-1 flex items-center justify-between pt-0.5">
+          {isLong ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="text-[0.68rem] text-(--ui-accent) hover:underline select-none font-medium"
+            >
+              {expanded ? t.common.collapse : t.common.expand}
+            </button>
+          ) : <div />}
+
+          <div className="flex items-center gap-1 opacity-0 group-hover/user-msg:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={handleCopy}
+              title={copied ? t.common.copied : t.common.copy}
+              className="p-1 rounded text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+            >
+              <Codicon name={copied ? 'check' : 'copy'} className="text-xs" />
+            </button>
+            {onEditUser && (
+              <button
+                type="button"
+                onClick={onEditUser}
+                title={t.session.editMessage}
+                className="p-1 rounded text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+              >
+                <Codicon name="edit" className="text-xs" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AssistantActionBar({
+  text,
+  onRetry
+}: {
+  text: string
+  onRetry?: () => void
+}) {
+  const { t } = useI18n()
+  const [copied, setCopied] = useState(false)
+  const [working, setWorking] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => () => { audioRef.current?.pause(); audioRef.current = null }, [])
+
+  if (!text.trim()) return null
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const toggleSpeak = async () => {
+    if (playing) {
+      audioRef.current?.pause()
+      setPlaying(false)
+      return
+    }
+    setWorking(true)
+    try {
+      const result = await api.speakText(text)
+      if (!result.ok || !result.data_url) throw new Error('Gateway did not return audio')
+      audioRef.current?.pause()
+      const audio = new Audio(result.data_url)
+      audioRef.current = audio
+      audio.onended = () => setPlaying(false)
+      audio.onerror = () => setPlaying(false)
+      await audio.play()
+      setPlaying(true)
+    } catch {
+      // best effort
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1.5 pt-1 opacity-0 group-hover/assistant:opacity-100 transition-opacity select-none">
+      <button
+        type="button"
+        onClick={handleCopy}
+        title={copied ? t.common.copied : t.common.copy}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+      >
+        <Codicon name={copied ? 'check' : 'copy'} className="text-xs" />
+        <span>{copied ? t.common.copied : t.common.copy}</span>
+      </button>
+
+      <button
+        type="button"
+        disabled={working}
+        onClick={() => void toggleSpeak()}
+        title={working ? '准备中…' : playing ? '停止朗读' : '朗读'}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+      >
+        <Codicon name={working ? 'loading' : playing ? 'mute' : 'unmute'} className={cn('text-xs', working && 'animate-spin')} />
+        <span>{playing ? '停止' : '朗读'}</span>
+      </button>
+
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          title={t.session.retrySend}
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+        >
+          <Codicon name="refresh" className="text-xs" />
+          <span>{t.session.retrySend}</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
 function MessageRow({
   message,
   onEditUser,
@@ -223,42 +428,12 @@ function MessageRow({
 
   // User Message
   if (message.role === 'user') {
-    const textPart = message.parts?.find(p => p.type === 'text')?.text || ''
-    const isContextCompaction = textPart.startsWith('[CONTEXT COMPACTION') || textPart.startsWith('[SYSTEM]')
-
-    if (isContextCompaction) {
-      return (
-        <div className="my-3 rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-3 text-xs text-(--ui-text-tertiary) leading-relaxed">
-          {textPart}
-        </div>
-      )
-    }
-
     return (
-      <div className="sticky top-0 z-10 bg-(--ui-bg-chrome) py-1.5 w-full">
-        <div
-          className={cn(
-            'relative w-full rounded-xl border bg-(--ui-bg-card) p-3 text-left shadow-xs transition-colors',
-            message.failed ? 'border-(--ui-red)' : 'border-(--ui-stroke-tertiary)'
-          )}
-        >
-          <MarkdownContent
-            content={textPart}
-            className="text-(--conversation-text-font-size) leading-[var(--conversation-line-height)] text-(--ui-text-primary)"
-            onPreview={onPreview}
-          />
-          {onEditUser && (
-            <button
-              type="button"
-              onClick={onEditUser}
-              title={t.session.editMessage}
-              className="absolute top-1.5 right-1.5 p-1 rounded-md text-(--ui-text-quaternary) hover:text-(--ui-text-primary) active:scale-95 transition-all"
-            >
-              <Codicon name="edit" className="text-xs" />
-            </button>
-          )}
-        </div>
-      </div>
+      <UserMessageRow
+        message={message}
+        onEditUser={onEditUser}
+        onPreview={onPreview}
+      />
     )
   }
 
@@ -299,8 +474,10 @@ function MessageRow({
   })
   flushToolGroup()
 
+  const assistantFullText = message.parts?.filter(part => part.type === 'text').map(part => part.text).join('\n') ?? ''
+
   return (
-    <div className="w-full my-3 space-y-2">
+    <div className="w-full my-3 space-y-2 group/assistant">
       {message.error ? (
         <div className="flex items-start gap-2.5 text-(--ui-red) p-3 rounded-xl bg-(--ui-bg-card) border border-(--ui-red)/20">
           <Codicon name="error" className="mt-0.5 shrink-0 text-sm" />
@@ -319,45 +496,14 @@ function MessageRow({
       ) : (
         <>
           {renderedElements}
-          <SpeakReplyButton text={message.parts?.filter(part => part.type === 'text').map(part => part.text).join('\n') ?? ''} />
+          <AssistantActionBar
+            text={assistantFullText}
+            onRetry={message.retryText ? () => void retryMessage(message.id, message.retryText!, message.retryUserMessageId) : undefined}
+          />
         </>
       )}
     </div>
   )
-}
-
-/** Gateway TTS for an assistant reply. The returned data URL plays through
- * the platform WebView/browser audio stack, so no device-local TTS service is
- * required and the same behavior works on desktop and mobile. */
-function SpeakReplyButton({ text }: { text: string }) {
-  const [working, setWorking] = useState(false)
-  const [playing, setPlaying] = useState(false)
-  const [error, setError] = useState('')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  useEffect(() => () => { audioRef.current?.pause(); audioRef.current = null }, [])
-  if (!text.trim()) return null
-
-  const toggle = async () => {
-    if (playing) {
-      audioRef.current?.pause()
-      setPlaying(false)
-      return
-    }
-    setWorking(true); setError('')
-    try {
-      const result = await api.speakText(text)
-      if (!result.ok || !result.data_url) throw new Error('Gateway did not return audio')
-      audioRef.current?.pause()
-      const audio = new Audio(result.data_url)
-      audioRef.current = audio
-      audio.onended = () => setPlaying(false)
-      audio.onerror = () => { setPlaying(false); setError('Unable to play spoken reply') }
-      await audio.play()
-      setPlaying(true)
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to speak reply') } finally { setWorking(false) }
-  }
-  return <div className="flex items-center gap-2 pt-1"><button className="rounded px-1.5 py-1 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) disabled:opacity-40" disabled={working} onClick={() => void toggle()} type="button"><Codicon name={working ? 'loading' : playing ? 'mute' : 'unmute'} className={working ? 'animate-spin' : undefined} /> <span className="ml-1">{working ? 'Preparing audio…' : playing ? 'Stop reading' : 'Read aloud'}</span></button>{error ? <span className="text-[0.65rem] text-(--ui-red)">{error}</span> : null}</div>
 }
 
 function ThinkingAccordion({ reasoning }: { reasoning: string }) {

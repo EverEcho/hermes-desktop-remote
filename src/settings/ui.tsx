@@ -36,7 +36,7 @@ export function Toggle({ checked, disabled, onChange }: { checked: boolean; disa
       aria-checked={checked}
       aria-role="switch"
       className={cn(
-        'relative h-6 w-10 shrink-0 rounded-full transition-colors',
+        'relative h-6 w-10 shrink-0 rounded-full p-0.5 transition-colors',
         checked ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)',
         disabled && 'opacity-40 pointer-events-none'
       )}
@@ -45,8 +45,8 @@ export function Toggle({ checked, disabled, onChange }: { checked: boolean; disa
     >
       <span
         className={cn(
-          'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform',
-          checked ? 'translate-x-[18px]' : 'translate-x-0.5'
+          'block size-5 rounded-full bg-white shadow-sm transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0'
         )}
       />
     </button>

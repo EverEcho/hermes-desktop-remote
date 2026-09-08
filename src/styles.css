@@ -238,9 +238,14 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
   }
 
   html[data-surface='desktop'] .desktop-titlebar-traffic-spacer {
+    display: none;
     width: 70px;
     height: 100%;
     flex: 0 0 auto;
+  }
+
+  html[data-platform='tauri'][data-desktop-os='macos'] .desktop-titlebar-traffic-spacer {
+    display: block;
   }
 
   html[data-surface='desktop'] .desktop-titlebar-title {

@@ -7,7 +7,7 @@ import { cn } from '@/ui/utils'
 import * as api from '@/gateway/api'
 import { $authState, switchProfile } from '@/auth'
 import { $connectionState, $subagentsBySession } from '@/gateway'
-import { $activeSessionId, $sessionTitle, branchStoredSession } from '@/sessions/store'
+import { $activeSessionId, $sessionTitle, branchStoredSession, isMessagingSessionSource } from '@/sessions/store'
 import { $sessionStates } from '@/sessions/session-states'
 import { useI18n } from '@/i18n'
 import { openExternalUrl } from '@/native'
@@ -25,7 +25,7 @@ export interface SidebarProps {
   activeSessionId: string | null
   onBranch?: (id: string, profile?: string) => Promise<boolean>
   onSelect: (id: string, profile?: string) => void
-  onNew: () => void
+  onNew: (cwd?: string) => void
   onRefresh: () => void
   onLoadMore?: () => void
   onToggleSessionScope?: () => void
@@ -40,6 +40,11 @@ export function Sidebar(props: SidebarProps) {
   const [confirmDelete, setConfirmDelete] = useState<SessionInfo | null>(null)
   const [showMoreTools, setShowMoreTools] = useState(false)
   const [remoteSearch, setRemoteSearch] = useState<SessionInfo[] | null>(null)
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
+
+  const toggleFolder = useCallback((name: string) => {
+    setCollapsedFolders(prev => ({ ...prev, [name]: !prev[name] }))
+  }, [])
 
   const normalizedSearch = search.trim().toLowerCase()
   const scopedSessions = useMemo(() => {
@@ -112,18 +117,32 @@ export function Sidebar(props: SidebarProps) {
     ? unpinned.filter(session => session.source === 'cron')
     : (props.cronSessions ?? unpinned.filter(session => session.source === 'cron')).filter(session => !session.pinned)
   const messagingSessions = normalizedSearch
-    ? unpinned.filter(session => Boolean(session.source) && session.source !== 'cron')
-    : (props.messagingSessions ?? unpinned.filter(session => Boolean(session.source) && session.source !== 'cron')).filter(session => !session.pinned)
-  const recent = unpinned.filter(session => !session.cwd && !session.source).slice(0, 24)
+    ? unpinned.filter(session => isMessagingSessionSource(session.source))
+    : (props.messagingSessions ?? unpinned.filter(session => isMessagingSessionSource(session.source))).filter(session => !session.pinned)
+
+  // Interactive sessions: unpinned sessions that are not cron runs and not messaging platform bots
+  const interactiveSessions = useMemo(() => {
+    return unpinned.filter(session => session.source !== 'cron' && !isMessagingSessionSource(session.source))
+  }, [unpinned])
 
   const projects = useMemo(() => {
-    const map = new Map<string, SessionInfo[]>()
-    for (const session of unpinned.filter(session => session.cwd && !session.source)) {
-      const name = session.cwd!.split('/').filter(Boolean).pop() || 'default'
-      map.set(name, [...(map.get(name) || []), session])
+    const map = new Map<string, { path: string; sessions: SessionInfo[] }>()
+    for (const session of interactiveSessions.filter(session => Boolean(session.cwd))) {
+      const path = session.cwd!
+      const name = path.split('/').filter(Boolean).pop() || 'default'
+      const existing = map.get(name)
+      if (existing) {
+        existing.sessions.push(session)
+      } else {
+        map.set(name, { path, sessions: [session] })
+      }
     }
     return [...map.entries()]
-  }, [unpinned])
+  }, [interactiveSessions])
+
+  const homeSessions = useMemo(() => {
+    return interactiveSessions.filter(session => !session.cwd)
+  }, [interactiveSessions])
 
   const messagingByPlatform = useMemo(() => {
     const groups = new Map<string, SessionInfo[]>()
@@ -418,7 +437,11 @@ export function Sidebar(props: SidebarProps) {
           )}
 
         {/* Pinned Section */}
-        <SidebarSection icon={<Codicon name="pin" className="text-xs" />} title={t.sidebar.pinned}>
+        <SidebarSection
+          icon={<Codicon name="pin" className="text-xs" />}
+          title={t.sidebar.pinned}
+          extra={pinned.length > 0 ? t.sidebar.pinnedHint : undefined}
+        >
           {pinned.length > 0 ? (
             pinned.map(session => (
               <SessionItem
@@ -439,38 +462,102 @@ export function Sidebar(props: SidebarProps) {
         </SidebarSection>
 
         {/* Projects Section */}
-        <SidebarSection icon={<Codicon name="folder" className="text-xs" />} title={t.sidebar.projects}>
-          <button
-            onClick={props.onNew}
-            className="group flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover)"
-          >
-            <Codicon name="home" className="text-xs text-(--ui-text-quaternary)" />
-            <span>{t.sidebar.home}</span>
-          </button>
-          {projects.map(([name, sessions]) => (
-            <div key={name} className="mt-1 mb-2">
-              <div className="px-2 py-0.5 text-xs font-medium text-(--ui-text-secondary) flex items-center gap-1.5 truncate">
-                <Codicon name="folder" className="text-xs text-(--ui-text-tertiary) shrink-0" />
-                <span className="truncate">{name}</span>
+        {projects.length > 0 && (
+          <SidebarSection icon={<Codicon name="folder" className="text-xs" />} title={t.sidebar.projects}>
+            {/* Home bucket for detached sessions */}
+            <div className="mb-2">
+              <div
+                className="group flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) cursor-pointer select-none"
+                onClick={() => toggleFolder('__home__')}
+              >
+                <div className="flex items-center gap-1.5 truncate min-w-0">
+                  <Codicon
+                    name={collapsedFolders['__home__'] ? 'chevron-right' : 'chevron-down'}
+                    className="text-[0.65rem] text-(--ui-text-tertiary) shrink-0 transition-transform"
+                  />
+                  <Codicon name="home" className="text-xs text-(--ui-text-quaternary) shrink-0" />
+                  <span className="font-medium text-(--ui-text-secondary)">{t.sidebar.home}</span>
+                  {homeSessions.length > 0 && (
+                    <span className="text-[0.62rem] text-(--ui-text-quaternary)">({homeSessions.length})</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation()
+                    props.onNew()
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition"
+                  title={t.sidebar.newSession}
+                >
+                  <Codicon name="add" className="text-xs" />
+                </button>
               </div>
-              <SessionTree
-                sessions={sessions}
-                activeSessionId={props.activeSessionId}
-                onSelect={props.onSelect}
-                onLongPress={handleLongPress}
-                onTogglePin={togglePinned}
-                nested
-                showMeta={props.showDesktopMeta}
-              />
+              {!collapsedFolders['__home__'] && homeSessions.length > 0 && (
+                <SessionTree
+                  sessions={homeSessions}
+                  activeSessionId={props.activeSessionId}
+                  onSelect={props.onSelect}
+                  onLongPress={handleLongPress}
+                  onTogglePin={togglePinned}
+                  nested
+                  showMeta={props.showDesktopMeta}
+                />
+              )}
             </div>
-          ))}
-        </SidebarSection>
 
-        {/* Recent Section */}
-        {recent.length > 0 && (
+            {/* Project folders */}
+            {projects.map(([name, { path, sessions }]) => {
+              const isCollapsed = Boolean(collapsedFolders[name])
+              return (
+                <div key={name} className="mt-1 mb-2">
+                  <div
+                    className="group flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) cursor-pointer select-none"
+                    onClick={() => toggleFolder(name)}
+                  >
+                    <div className="flex items-center gap-1.5 truncate min-w-0">
+                      <Codicon
+                        name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                        className="text-[0.65rem] text-(--ui-text-tertiary) shrink-0 transition-transform"
+                      />
+                      <Codicon name="folder" className="text-xs text-(--ui-text-tertiary) shrink-0" />
+                      <span className="truncate font-medium">{name}</span>
+                      <span className="text-[0.62rem] text-(--ui-text-quaternary)">({sessions.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={e => {
+                        e.stopPropagation()
+                        props.onNew(path)
+                      }}
+                      className="opacity-0 group-hover:opacity-100 text-(--ui-text-quaternary) hover:text-(--ui-text-primary) p-0.5 rounded transition"
+                      title={t.desktop.commands.newProjectSession}
+                    >
+                      <Codicon name="add" className="text-xs" />
+                    </button>
+                  </div>
+                  {!isCollapsed && (
+                    <SessionTree
+                      sessions={sessions}
+                      activeSessionId={props.activeSessionId}
+                      onSelect={props.onSelect}
+                      onLongPress={handleLongPress}
+                      onTogglePin={togglePinned}
+                      nested
+                      showMeta={props.showDesktopMeta}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </SidebarSection>
+        )}
+
+        {/* When no projects exist, render flat Recent section */}
+        {projects.length === 0 && interactiveSessions.length > 0 && (
           <SidebarSection icon={<Codicon name="history" className="text-xs" />} title={t.sidebar.recent}>
             <SessionTree
-              sessions={recent}
+              sessions={interactiveSessions.slice(0, 30)}
               activeSessionId={props.activeSessionId}
               onSelect={props.onSelect}
               onLongPress={handleLongPress}
@@ -565,12 +652,19 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-function SidebarSection({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+function SidebarSection({ icon, title, extra, children }: { icon: ReactNode; title: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <section className="mb-3">
-      <div className="flex items-center gap-1.5 px-2 py-1 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-(--ui-accent)">
-        {icon}
-        <span>{title}</span>
+      <div className="flex items-center justify-between px-2 py-1">
+        <div className="flex items-center gap-1.5 text-[0.64rem] font-semibold uppercase tracking-[0.12em] text-(--ui-accent)">
+          {icon}
+          <span>{title}</span>
+        </div>
+        {extra && (
+          <span className="text-[0.6rem] text-(--ui-text-quaternary) font-normal">
+            {extra}
+          </span>
+        )}
       </div>
       {children}
     </section>
@@ -672,7 +766,7 @@ function SessionItem({
     }
   }
 
-  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (didLongPress.current) {
       didLongPress.current = false
       return
@@ -686,9 +780,21 @@ function SessionItem({
     onSelect(id, session.profile)
   }
 
+  const contextName = session.cwd ? session.cwd.split('/').filter(Boolean).pop() : session.source ? session.source : (session.profile || 'default')
+  const title = session.title || session.preview || t.sidebar.untitled
+  const age = formatAge(session.last_active, t.sidebar.justNow)
+
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={handleClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          handleClick(e as unknown as React.MouseEvent<HTMLDivElement>)
+        }
+      }}
       onContextMenu={event => {
         event.preventDefault()
         onLongPress(session)
@@ -697,18 +803,19 @@ function SessionItem({
       onTouchEnd={handleTouchEnd}
       onTouchMove={handleTouchEnd}
       className={cn(
-        'group block w-full rounded px-2 py-1 text-left text-xs transition-colors duration-100',
+        'group relative block w-full rounded-lg px-2.5 py-1.5 text-left transition-colors duration-100 cursor-pointer border',
         active
-          ? 'bg-(--ui-row-active-background) text-(--ui-text-primary) font-medium'
-          : cn('text-(--ui-text-secondary) hover:bg-(--chrome-action-hover)', session.unread && 'font-medium text-(--ui-text-primary)'),
+          ? 'bg-(--ui-row-active-background) border-(--ui-stroke-tertiary)'
+          : cn('border-transparent hover:bg-(--chrome-action-hover) hover:border-(--ui-stroke-quaternary)', session.unread && 'font-medium'),
         nested && 'pl-5'
       )}
     >
-      <div className="flex items-center justify-between gap-1">
-        <span className="truncate flex-1">
+      {/* Line 1: Lead dot + context + age / action button */}
+      <div className="flex items-center justify-between gap-1 text-[0.6875rem] text-(--ui-text-tertiary)">
+        <div className="flex items-center gap-1.5 min-w-0">
           <span
             className={cn(
-              'mr-1 inline-block size-1.5 rounded-full align-middle',
+              'size-1.5 shrink-0 rounded-full',
               dotState === 'needs-input'
                 ? 'bg-amber-500'
                 : dotState === 'working'
@@ -718,24 +825,52 @@ function SessionItem({
                 : 'bg-(--ui-text-quaternary)'
             )}
           />
-          {session.unread && <span className="mr-1 inline-block size-1.5 rounded-full bg-(--ui-accent) align-middle" aria-label="Unread" />}
-          {session.title || session.preview || t.sidebar.untitled}
-        </span>
-        <span className="shrink-0 text-[0.6rem] text-(--ui-text-quaternary)">
-          {formatAge(session.last_active, t.sidebar.justNow)}
-        </span>
+          {session.unread && <span className="size-1.5 shrink-0 rounded-full bg-(--ui-accent)" aria-label="Unread" />}
+          <span className="truncate font-mono text-[0.625rem] text-(--ui-text-tertiary)">
+            {contextName}
+          </span>
+        </div>
+
+        <div className="relative shrink-0 flex items-center min-w-[2.2rem] justify-end">
+          <span className="text-[0.625rem] text-(--ui-text-quaternary) group-hover:opacity-0 transition-opacity">
+            {age}
+          </span>
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation()
+              onLongPress(session)
+            }}
+            title="会话选项"
+            className="absolute right-0 opacity-0 group-hover:opacity-100 size-4.5 rounded flex items-center justify-center text-(--ui-text-quaternary) hover:text-(--ui-text-primary) hover:bg-(--ui-bg-quaternary) transition-all"
+          >
+            <Codicon name="ellipsis" className="text-xs" />
+          </button>
+        </div>
       </div>
-      {session.preview && session.title ? (
-        <span className="block truncate pl-3 text-[0.65rem] text-(--ui-text-quaternary)">
-          {session.preview}
-        </span>
-      ) : null}
+
+      {/* Line 2: Title + preview */}
+      <div className="mt-0.5 min-w-0">
+        <div className={cn(
+          'truncate text-xs font-medium leading-snug',
+          active ? 'text-(--ui-accent)' : 'text-(--ui-text-primary)'
+        )}>
+          {title}
+        </div>
+        {session.preview && session.title ? (
+          <div className="truncate text-[0.65rem] text-(--ui-text-quaternary) mt-0.5 leading-tight">
+            {session.preview}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Line 3: Model & Usage footer */}
       {showMeta && (session.model || session.input_tokens || session.output_tokens || session.actual_cost_usd || session.estimated_cost_usd) ? (
-        <span className="block truncate pl-3 pt-0.5 text-[0.6rem] text-(--ui-text-quaternary)">
-          {[session.profile, session.model, formatSessionUsage(session)].filter(Boolean).join(' · ')}
-        </span>
+        <div className="mt-1 truncate text-[0.6rem] text-(--ui-text-tertiary) flex items-center gap-1 font-mono">
+          <span>{[session.profile && session.profile !== 'default' ? session.profile : null, session.model, formatSessionUsage(session)].filter(Boolean).join(' · ')}</span>
+        </div>
       ) : null}
-    </button>
+    </div>
   )
 }
 

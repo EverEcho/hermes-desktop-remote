@@ -15,3 +15,4 @@ android/app/build/
 !.env.example
 .vfox/
 SYNC_SUMMARY.md
+source_code

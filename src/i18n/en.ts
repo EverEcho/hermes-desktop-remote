@@ -12,7 +12,11 @@ export const en = {
     save: 'Save',
     saving: 'Saving…',
     refresh: 'Refresh',
-    cancel: 'Cancel'
+    cancel: 'Cancel',
+    copy: 'Copy',
+    copied: 'Copied',
+    expand: 'Expand',
+    collapse: 'Collapse'
   },
   errors: {
     diskFull: 'Disk full — free some space, then try again.'
@@ -121,6 +125,9 @@ export const en = {
     messaging: 'Messaging',
     artifacts: 'Artifacts',
     profiles: 'Profiles',
+    newProfile: 'New Profile',
+    manageProfiles: 'Manage Profiles',
+    color: 'Theme Color',
     allProfileSessions: 'All profile sessions',
     currentProfileSessions: 'Current profile sessions',
     webhooks: 'Webhooks',
@@ -644,6 +651,47 @@ export const en = {
     diff: 'Diff',
     diffEmpty: 'No diff available',
     clean: 'Working tree clean'
+  },
+  profiles: {
+    title: 'Profiles',
+    description: 'Profiles are stored and managed by the connected Gateway.',
+    namePlaceholder: 'New profile name',
+    create: 'Create',
+    import: 'Import',
+    startEmpty: 'Start empty',
+    cloneFrom: (name: string) => `Clone ${name}`,
+    noSkills: 'No skills',
+    loadingProfiles: 'Loading profiles…',
+    defaultProfile: 'Default profile',
+    activeBadge: 'Active',
+    rename: 'Rename',
+    soul: 'Soul',
+    setup: 'Setup',
+    export: 'Export',
+    delete: 'Delete',
+    noProfiles: 'No profiles found',
+    exportArchivePath: 'Profile archive path on the connected Gateway',
+    importArchivePath: 'Archive path on the connected Gateway (.tar.gz)',
+    importNewName: 'New profile name (optional)',
+    setupCommandTitle: (name: string) => `Setup command for ${name} on the connected Gateway`,
+    renamePrompt: 'Rename profile',
+    deleteConfirm: (name: string) => `Delete profile “${name}”?`,
+    loadingSoul: 'Loading SOUL.md…',
+    soulPlaceholder: 'Profile instructions and personality',
+    saveSoul: 'Save SOUL.md',
+    savingSoul: 'Saving…',
+    errors: {
+      loadProfiles: 'Unable to load profiles',
+      createProfile: 'Unable to create profile',
+      switchProfile: 'Unable to switch profile',
+      renameProfile: 'Unable to rename profile',
+      deleteProfile: 'Unable to delete profile',
+      exportProfile: 'Unable to export profile',
+      importProfile: 'Unable to import profile',
+      loadSetupCommand: 'Unable to load setup command',
+      loadSoul: 'Unable to load profile soul',
+      saveSoul: 'Unable to save profile soul'
+    }
   }
 }
 

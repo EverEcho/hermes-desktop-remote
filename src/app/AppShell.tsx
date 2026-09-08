@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@nanostores/react'
 
 import { $connectionState, $gatewayProfile, getGateway, reconnectGateway } from '@/gateway'
@@ -112,6 +112,14 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   const pendingSudo = useStore($pendingSudo)
   const pendingMcpSetup = useStore($pendingMcpSetup)
 
+  const allSessions = useMemo(() => {
+    const byId = new Map<string, (typeof sessions)[number]>()
+    for (const session of [...sessions, ...(cronSessions ?? []), ...(messagingSessions ?? [])]) {
+      byId.set(session.id, session)
+    }
+    return [...byId.values()]
+  }, [sessions, cronSessions, messagingSessions])
+
   useEffect(() => {
     window.localStorage.setItem(LEFT_SIDEBAR_KEY, String(leftSidebarVisible))
   }, [leftSidebarVisible])
@@ -190,9 +198,9 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
     handleSelectSession(next.id, next.profile)
   }, [authState, connectionState, gatewayProfile, handleSelectSession, pendingProfileSession])
 
-  const handleNewSession = useCallback(async () => {
+  const handleNewSession = useCallback(async (cwd?: string) => {
     setDrawerOpen(false)
-    const id = await createNewSession()
+    const id = await createNewSession(cwd)
     if (id && isDesktopSurface) {
       setDesktopTabs(tabs => tabs.includes(id) ? tabs : [...tabs, id])
     }
@@ -369,7 +377,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
           leftSidebarVisible={leftSidebarVisible}
           rightSidebarVisible={rightSidebarVisible && Boolean(currentCwd)}
           rightSidebarAvailable={Boolean(activeSessionId && currentCwd)}
-          title={activeSessionId ? sessionTitle || 'RHermes' : 'RHermes'}
+          title={activeSessionId ? sessionTitle || allSessions.find(s => (s._lineage_root_id ?? s.id) === activeSessionId)?.title || 'RHermes' : 'RHermes'}
           onToggleLeftSidebar={() => setLeftSidebarVisible(value => !value)}
           onToggleRightSidebar={() => setRightSidebarVisible(value => !value)}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -423,7 +431,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
                 onCloseAll={handleCloseAllDesktopTabs}
                 onCloseOthers={handleCloseOtherDesktopTabs}
                 onSelect={handleSelectSession}
-                sessions={sessions}
+                sessions={allSessions}
                 tabIds={desktopTabs}
               />
             ) : null}

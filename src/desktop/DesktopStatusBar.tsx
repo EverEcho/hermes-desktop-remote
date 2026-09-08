@@ -1,13 +1,24 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useStore } from '@nanostores/react'
 import { $connectionState, reconnectGateway } from '@/gateway'
-import { $currentCwd } from '@/sessions/store'
+import { $activeSessionId, $cronSessions, $currentCwd, $messagingSessions, $sessions } from '@/sessions/store'
 import { getGatewayBaseUrl } from '@/gateway/http-client'
-import { getStatus } from '@/gateway/api'
+import { getStatus, createProfile } from '@/gateway/api'
 import { $approvalMode, setApprovalMode, syncApprovalMode } from '@/store/approval-mode'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
+import { $authState, switchProfile } from '@/auth'
+import type { ProfileInfo } from '@/types/hermes'
+import {
+  $profiles,
+  $profileColors,
+  refreshProfiles,
+  resolveProfileColor,
+  profileColorSoft,
+  setProfileColor,
+  PROFILE_SWATCHES
+} from '@/store/profiles'
 
 export type DesktopStatusFeature =
   | 'skills'
@@ -46,6 +57,251 @@ export interface DesktopStatusBarProps {
   onNewSession?: () => void
 }
 
+interface DesktopProfileRailProps {
+  leftSidebarVisible: boolean
+  sessionScope?: 'active' | 'all'
+  onToggleSessionScope?: () => void
+  onFeature?: (feature: DesktopStatusFeature) => void
+}
+
+function DesktopProfileRail({
+  leftSidebarVisible,
+  sessionScope = 'active',
+  onToggleSessionScope,
+  onFeature
+}: DesktopProfileRailProps) {
+  const { t } = useI18n()
+  const p = t.sidebar
+  const authState = useStore($authState)
+  const connectionState = useStore($connectionState)
+  const profiles = useStore($profiles)
+  const profileColors = useStore($profileColors)
+
+  const activeProfile = authState.status === 'authenticated' ? authState.profile : 'default'
+  const isAll = sessionScope === 'all'
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newProfileName, setNewProfileName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [activeMenuProfile, setActiveMenuProfile] = useState<string | null>(null)
+
+  const createInputRef = useRef<HTMLInputElement>(null)
+  const createPopoverRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (connectionState === 'open') {
+      void refreshProfiles()
+    }
+  }, [connectionState])
+
+  useEffect(() => {
+    if (createOpen) {
+      setTimeout(() => createInputRef.current?.focus(), 50)
+    }
+  }, [createOpen])
+
+  useEffect(() => {
+    const handleDocClick = (e: MouseEvent) => {
+      if (createPopoverRef.current && !createPopoverRef.current.contains(e.target as Node)) {
+        setCreateOpen(false)
+      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setActiveMenuProfile(null)
+      }
+    }
+    if (createOpen || activeMenuProfile) {
+      document.addEventListener('mousedown', handleDocClick)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleDocClick)
+    }
+  }, [createOpen, activeMenuProfile])
+
+  const handleCreate = async () => {
+    const name = newProfileName.trim()
+    if (!name || submitting) return
+    setSubmitting(true)
+    try {
+      await createProfile({ name })
+      setNewProfileName('')
+      setCreateOpen(false)
+      await refreshProfiles()
+      await switchProfile(name)
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : '创建智能体失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Named profiles (exclude 'default')
+  const namedProfiles = profiles.filter(item => !item.is_default && item.name !== 'default')
+  const displayProfiles: ProfileInfo[] = namedProfiles.length > 0
+    ? namedProfiles
+    : activeProfile !== 'default'
+      ? [{ name: activeProfile, display_name: activeProfile, is_default: false }]
+      : []
+
+  return (
+    <div
+      className={cn(
+        'relative flex items-center shrink-0 px-2 border-r border-(--ui-stroke-tertiary) bg-(--ui-bg-sidebar)/40 transition-[width]',
+        leftSidebarVisible ? 'w-[13.25rem] justify-between' : 'w-auto'
+      )}
+    >
+      <div className="flex items-center gap-1 min-w-0 flex-1 overflow-x-auto no-scrollbar">
+        {/* 1. Left Pin: Home ↔ Layers stateful toggle pill */}
+        <button
+          type="button"
+          onClick={onToggleSessionScope}
+          className={cn(
+            'flex size-5 shrink-0 items-center justify-center rounded transition-colors',
+            isAll
+              ? 'bg-(--ui-bg-elevated) text-(--ui-accent) shadow-2xs'
+              : 'text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover)'
+          )}
+          title={isAll ? p.currentProfileSessions : p.allProfileSessions}
+        >
+          <Codicon name={isAll ? 'layers' : 'home'} className="text-xs" />
+        </button>
+
+        {/* 2. Middle: Dynamic Profile Squares */}
+        {displayProfiles.map(prof => {
+          const isActive = !isAll && prof.name === activeProfile
+          const color = resolveProfileColor(prof.name, profileColors) ?? 'var(--ui-accent)'
+          const initial = (prof.display_name || prof.name).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '').charAt(0).toUpperCase() || '?'
+
+          return (
+            <button
+              key={prof.name}
+              type="button"
+              onClick={() => {
+                if (isAll) onToggleSessionScope?.()
+                void switchProfile(prof.name)
+              }}
+              onContextMenu={e => {
+                e.preventDefault()
+                setActiveMenuProfile(prof.name)
+              }}
+              className={cn(
+                'relative flex size-5 shrink-0 items-center justify-center rounded-[3px] font-semibold text-[10px] select-none transition-all active:scale-95',
+                isActive ? 'opacity-100' : 'opacity-65 hover:opacity-100'
+              )}
+              style={{
+                backgroundColor: profileColorSoft(color, isActive ? 32 : 18),
+                color: color,
+                boxShadow: isActive ? `inset 0 0 0 1.5px ${color}` : undefined
+              }}
+              title={prof.display_name ? `${prof.display_name} (${prof.name})` : prof.name}
+            >
+              <span>{initial}</span>
+            </button>
+          )
+        })}
+
+        {/* 3. Add Profile Button (+) */}
+        <div className="relative shrink-0" ref={createPopoverRef}>
+          <button
+            type="button"
+            onClick={() => setCreateOpen(!createOpen)}
+            className="flex size-5 shrink-0 items-center justify-center rounded-[3px] text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) opacity-70 hover:opacity-100 transition-colors"
+            title={p.newProfile}
+          >
+            <Codicon name="add" className="text-xs" />
+          </button>
+
+          {/* Quick Create Popover */}
+          {createOpen && (
+            <div className="absolute bottom-full left-0 mb-1.5 w-52 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-2 shadow-lg backdrop-blur-md z-50 text-xs">
+              <div className="text-[11px] font-medium text-(--ui-text-primary) mb-1.5">
+                {p.newProfile}
+              </div>
+              <input
+                ref={createInputRef}
+                type="text"
+                value={newProfileName}
+                onChange={e => setNewProfileName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void handleCreate()
+                  if (e.key === 'Escape') setCreateOpen(false)
+                }}
+                placeholder="智能体名称 (如 coder)..."
+                className="w-full rounded border border-(--ui-stroke-secondary) bg-(--ui-bg-chrome) px-2 py-1 text-xs text-(--ui-text-primary) outline-none focus:border-(--ui-accent) mb-2"
+              />
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(false)}
+                  className="rounded px-2 py-0.5 text-[10px] text-(--ui-text-tertiary) hover:text-(--ui-text-primary)"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={!newProfileName.trim() || submitting}
+                  onClick={() => void handleCreate()}
+                  className="rounded bg-(--ui-accent) px-2 py-0.5 text-[10px] font-medium text-white disabled:opacity-50"
+                >
+                  {submitting ? '创建中…' : '创建'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Right Pin: Manage Profiles (···) */}
+      <button
+        type="button"
+        onClick={() => onFeature?.('profiles')}
+        className="flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
+        title={p.manageProfiles}
+      >
+        <Codicon name="ellipsis" className="text-xs" />
+      </button>
+
+      {/* Right-click Context Menu / Color Swatches */}
+      {activeMenuProfile && (
+        <div
+          ref={menuRef}
+          className="absolute bottom-full left-4 mb-1.5 w-48 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) p-2 shadow-xl backdrop-blur-md z-50 text-xs"
+        >
+          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-(--ui-stroke-quaternary)">
+            <span className="font-medium text-(--ui-text-primary) truncate">{activeMenuProfile}</span>
+            <span className="text-[10px] text-(--ui-text-tertiary)">{p.color}</span>
+          </div>
+          <div className="grid grid-cols-6 gap-1.5 mb-2">
+            {PROFILE_SWATCHES.map((swatch, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setProfileColor(activeMenuProfile, swatch)
+                  setActiveMenuProfile(null)
+                }}
+                className="size-5 rounded-[3px] border border-black/10 hover:scale-110 transition-transform"
+                style={{ backgroundColor: swatch }}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveMenuProfile(null)
+              onFeature?.('profiles')
+            }}
+            className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] text-(--ui-text-secondary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) transition-colors"
+          >
+            <Codicon name="settings-gear" className="text-xs text-(--ui-accent)" />
+            <span>配置此智能体</span>
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function DesktopStatusBar({
   onOpenCommandPalette,
   onOpenCron,
@@ -59,13 +315,45 @@ export function DesktopStatusBar({
   sessionScope = 'active',
   onToggleSessionScope,
   onFeature,
-  onNewSession
+  onNewSession: _onNewSession
 }: DesktopStatusBarProps) {
   const { t } = useI18n()
   const sb = t.desktop.statusbar
   const connectionState = useStore($connectionState)
   const currentCwd = useStore($currentCwd)
   const approvalMode = useStore($approvalMode)
+  const activeSessionId = useStore($activeSessionId)
+  const sessions = useStore($sessions)
+  const cronSessions = useStore($cronSessions)
+  const messagingSessions = useStore($messagingSessions)
+
+  const activeSession = useMemo(() => {
+    if (!activeSessionId) return null
+    return (
+      sessions.find(s => (s._lineage_root_id ?? s.id) === activeSessionId) ||
+      cronSessions.find(s => (s._lineage_root_id ?? s.id) === activeSessionId) ||
+      messagingSessions.find(s => (s._lineage_root_id ?? s.id) === activeSessionId) ||
+      null
+    )
+  }, [activeSessionId, sessions, cronSessions, messagingSessions])
+
+  const totalTokens = (activeSession?.input_tokens ?? 0) + (activeSession?.output_tokens ?? 0)
+  const maxTokens = 256_000
+  const ratio = Math.min(1, Math.max(0, totalTokens / maxTokens))
+  const percent = Math.round(ratio * 100)
+  const filledBlocks = Math.min(10, Math.max(0, Math.round(ratio * 10)))
+  const asciiBar = `${'█'.repeat(filledBlocks)}${'░'.repeat(10 - filledBlocks)}`
+
+  const formatTok = (tok: number) => {
+    if (tok >= 1000) {
+      return `${(tok / 1000).toFixed(tok >= 10000 ? 0 : 1)}k`
+    }
+    return String(tok)
+  }
+
+  const contextUsageString = totalTokens > 0
+    ? `${formatTok(totalTokens)}/${formatTok(maxTokens)} [${asciiBar}] ${percent}%`
+    : `0k/${formatTok(maxTokens)} [░░░░░░░░░░] 0%`
 
   const [gatewayMenuOpen, setGatewayMenuOpen] = useState(false)
   const [approvalMenuOpen, setApprovalMenuOpen] = useState(false)
@@ -173,110 +461,13 @@ export function DesktopStatusBar({
 
   return (
     <footer className="relative flex h-7 w-full shrink-0 select-none items-stretch border-t border-(--ui-stroke-tertiary) bg-(--ui-bg-card) text-[11px] text-(--ui-text-secondary) font-sans z-40">
-      {/* 1. Left 区 (与侧边栏对齐，处于同一水平面) */}
-      <div
-        className={cn(
-          'flex items-center gap-1 shrink-0 px-2 border-r border-(--ui-stroke-tertiary) bg-(--ui-bg-sidebar)/40 transition-[width]',
-          leftSidebarVisible ? 'w-[13.25rem] justify-between' : 'w-auto'
-        )}
-      >
-        <div className="flex items-center gap-1 min-w-0 overflow-x-auto no-scrollbar">
-          {/* 全部 Profile 切换 (layers) */}
-          <button
-            type="button"
-            onClick={onToggleSessionScope}
-            className={cn(
-              'flex size-5 shrink-0 items-center justify-center rounded transition-colors',
-              sessionScope === 'all'
-                ? 'bg-(--ui-bg-elevated) text-(--ui-accent) shadow-2xs'
-                : 'text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover)'
-            )}
-            title={sessionScope === 'all' ? t.sidebar.currentProfileSessions : t.sidebar.allProfileSessions}
-          >
-            <Codicon name="layers" className="text-xs" />
-          </button>
-
-          {/* Computer Use 桌面权限 */}
-          <button
-            type="button"
-            onClick={() => onFeature?.('computer-use')}
-            className="relative flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-            title={t.sidebar.computerUse}
-          >
-            <Codicon name="device-camera-video" className="text-xs" />
-            <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-amber-500 ring-1 ring-(--ui-bg-card)" />
-          </button>
-
-          {/* 主页 / 新会话 (Home) */}
-          <button
-            type="button"
-            onClick={onNewSession}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-            title={t.sidebar.home}
-          >
-            <Codicon name="home" className="text-xs" />
-          </button>
-
-          {/* 分隔符 */}
-          <div className="h-3 w-px bg-(--ui-stroke-tertiary) shrink-0 mx-0.5" />
-
-          {/* 网关连接 */}
-          <button
-            type="button"
-            onClick={() => onFeature?.('connections')}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-            title={t.sidebar.connections}
-          >
-            <Codicon name="server" className="text-xs" />
-          </button>
-
-          {/* 远程终端 */}
-          <button
-            type="button"
-            onClick={() => onFeature?.('terminal')}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-            title={t.sidebar.terminal}
-          >
-            <Codicon name="terminal" className="text-xs" />
-          </button>
-
-          {/* 快捷彩色标签 C, P, U */}
-          <button
-            type="button"
-            onClick={() => onFeature?.('profiles')}
-            className="flex size-4.5 shrink-0 items-center justify-center rounded bg-purple-500/15 font-bold text-[9px] text-purple-600 dark:text-purple-400 hover:bg-purple-500/25 transition-transform active:scale-95"
-            title="Profile: C"
-          >
-            C
-          </button>
-          <button
-            type="button"
-            onClick={() => onFeature?.('profiles')}
-            className="flex size-4.5 shrink-0 items-center justify-center rounded bg-rose-500/15 font-bold text-[9px] text-rose-600 dark:text-rose-400 hover:bg-rose-500/25 transition-transform active:scale-95"
-            title="Profile: P"
-          >
-            P
-          </button>
-          <button
-            type="button"
-            onClick={() => onFeature?.('profiles')}
-            className="flex size-4.5 shrink-0 items-center justify-center rounded bg-emerald-500/15 font-bold text-[9px] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-transform active:scale-95"
-            title="Profile: U"
-          >
-            U
-          </button>
-        </div>
-
-        {/* 更多 (···) */}
-        <button
-          type="button"
-          onClick={() => onFeature?.('profiles')}
-          className="flex size-5 shrink-0 items-center justify-center rounded text-(--ui-text-tertiary) hover:text-(--ui-text-primary) hover:bg-(--chrome-action-hover) transition-colors"
-          title="管理角色与配置 (···)"
-        >
-          <Codicon name="ellipsis" className="text-xs" />
-        </button>
-      </div>
+      {/* 1. Left 区 (ProfileRail: 与侧边栏等宽对齐，Arc-Spaces 风格) */}
+      <DesktopProfileRail
+        leftSidebarVisible={leftSidebarVisible}
+        sessionScope={sessionScope}
+        onToggleSessionScope={onToggleSessionScope}
+        onFeature={onFeature}
+      />
 
       {/* 2. Content 区 (中间状态栏，横向自适应铺展) */}
       <div className="flex flex-1 items-center gap-1.5 min-w-0 px-2 overflow-x-auto no-scrollbar">
@@ -439,7 +630,7 @@ export function DesktopStatusBar({
           className="font-mono text-[10px] text-(--ui-text-secondary) select-none tracking-tight shrink-0"
           title={sb.contextUsage}
         >
-          21.5k/256k <span className="opacity-80">[██░░░░░░░░]</span> 8%
+          {contextUsageString}
         </div>
 
         {/* 2. 会话持续时长 */}
