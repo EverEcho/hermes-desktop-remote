@@ -2,34 +2,36 @@ PODS:
   - AparajitaCapacitorSecureStorage (8.0.0):
     - Capacitor
     - KeychainSwift (~> 21.0)
-  - Capacitor (7.6.8):
+  - Capacitor (8.5.1):
     - CapacitorCordova
-  - CapacitorApp (7.1.2):
+  - CapacitorApp (8.1.1):
     - Capacitor
-  - CapacitorBrowser (7.0.5):
+  - CapacitorBrowser (8.0.4):
     - Capacitor
-  - CapacitorCamera (7.0.5):
+  - CapacitorCamera (8.2.4):
     - Capacitor
-  - CapacitorClipboard (7.0.4):
+    - IONCameraLib (~> 2.0.0)
+  - CapacitorClipboard (8.0.1):
     - Capacitor
-  - CapacitorCordova (7.6.8)
-  - CapacitorFilesystem (7.1.8):
+  - CapacitorCordova (8.5.1)
+  - CapacitorFilesystem (8.1.3):
     - Capacitor
     - IONFilesystemLib (~> 1.1.1)
-  - CapacitorHaptics (7.0.5):
+  - CapacitorHaptics (8.0.2):
     - Capacitor
-  - CapacitorKeyboard (7.0.6):
+  - CapacitorKeyboard (8.0.5):
     - Capacitor
-  - CapacitorNetwork (7.0.4):
+  - CapacitorNetwork (8.0.1):
     - Capacitor
-  - CapacitorPreferences (7.0.4):
+  - CapacitorPreferences (8.0.1):
     - Capacitor
-  - CapacitorPushNotifications (7.0.7):
+  - CapacitorPushNotifications (8.1.2):
     - Capacitor
-  - CapacitorShare (7.0.4):
+  - CapacitorShare (8.0.1):
     - Capacitor
-  - CapacitorStatusBar (7.0.6):
+  - CapacitorStatusBar (8.0.3):
     - Capacitor
+  - IONCameraLib (2.0.0)
   - IONFilesystemLib (1.1.3)
   - KeychainSwift (21.0.0)
 
@@ -52,6 +54,7 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
+    - IONCameraLib
     - IONFilesystemLib
     - KeychainSwift
 
@@ -89,20 +92,21 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AparajitaCapacitorSecureStorage: 8128d05cafcb13b00448e20fb388a0edccd44b12
-  Capacitor: ff6bf01336ac353098378828aff465095a89e459
-  CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
-  CapacitorBrowser: 6d09f59655e89aede71654ef08b98de55cf032b6
-  CapacitorCamera: 9e952270be355797f769aa835bb7643a96c871fe
-  CapacitorClipboard: d1f123674cf413125db816a45e8f70e8770972fc
-  CapacitorCordova: e61ee8c40101b8cd011d0224261606a290c082cf
-  CapacitorFilesystem: c63fc54df41e5a6761785a7f3c49dc696c22e296
-  CapacitorHaptics: 1b145fa83c622e5383a3bac04ea81e2514f0b0f5
-  CapacitorKeyboard: a2e0869edd229490ce36aed2549c0d6b95e27ee8
-  CapacitorNetwork: b719d692a8d1310da8d26d6648d3aa1ef1e100e1
-  CapacitorPreferences: 69d9991307507aeab8ef8019c10b9babfda0e9ca
-  CapacitorPushNotifications: 0527809a9619ed775439d5ab2c2d996122b48319
-  CapacitorShare: 25f7fc5dd0e4edbde5d6801c6de5d14a8b450a41
-  CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
+  Capacitor: 8ca6676b3b1147b00f7f3a547ccf68defd658d55
+  CapacitorApp: 305bd13c44f6f9d164e2ee66a4faa956ed8c0e06
+  CapacitorBrowser: 752e0208aa07c7aa63d1f7cde895a3e9519b2656
+  CapacitorCamera: 4299fe8cf9b2b15e6ad602bce68d063b2008e8be
+  CapacitorClipboard: c75fdaa6e622111119f35e7914ecfc67b05efecb
+  CapacitorCordova: eb79411a3a0ed517eeb4c6dcf5933ce4bcbb5c9e
+  CapacitorFilesystem: b2bbd84bb91c177906c9dbc252864cb71ab9957b
+  CapacitorHaptics: 296f771ecd89c7a1bd92a7b6826a7d268e2e70f5
+  CapacitorKeyboard: b6b0744890cdb1d9a96e2cafcc9253fdcc55de3b
+  CapacitorNetwork: 8812ce60d11fb63d8f2e4ba51a49b2e59892ebe2
+  CapacitorPreferences: cca2021f386efb75947c850334447d9ff22b14f1
+  CapacitorPushNotifications: 32a7f840815f319fd9ba1c1c9b0b914be9d95237
+  CapacitorShare: 0c58305114538568059bfc07111f22dcb9cb2a82
+  CapacitorStatusBar: eca7bc2b58d9f886f1ef9edb66e57a9b29c121af
+  IONCameraLib: 729cae576e1a952602ce750a9790b6dc7d7e2e95
   IONFilesystemLib: f9e7653bb6388ba70fd38319b9c85c2a396e9213
   KeychainSwift: 4a71a45c802fd9e73906457c2dcbdbdc06c9419d
 

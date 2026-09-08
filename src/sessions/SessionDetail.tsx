@@ -19,6 +19,7 @@ import { MarkdownContent } from '@/components/MarkdownContent'
 import { Codicon } from '@/ui/Codicon'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { Button } from '@/ui/Button'
+import * as api from '@/gateway/api'
 import { useI18n, type Catalog } from '@/i18n'
 
 interface SessionDetailProps {
@@ -277,10 +278,47 @@ function MessageRow({ message, onEditUser }: { message: MobileMessage; onEditUse
           </div>
         </div>
       ) : (
-        renderedElements
+        <>
+          {renderedElements}
+          <SpeakReplyButton text={message.parts?.filter(part => part.type === 'text').map(part => part.text).join('\n') ?? ''} />
+        </>
       )}
     </div>
   )
+}
+
+/** Gateway TTS for an assistant reply. The returned data URL plays through
+ * the platform WebView/browser audio stack, so no device-local TTS service is
+ * required and the same behavior works on desktop and mobile. */
+function SpeakReplyButton({ text }: { text: string }) {
+  const [working, setWorking] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const [error, setError] = useState('')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => () => { audioRef.current?.pause(); audioRef.current = null }, [])
+  if (!text.trim()) return null
+
+  const toggle = async () => {
+    if (playing) {
+      audioRef.current?.pause()
+      setPlaying(false)
+      return
+    }
+    setWorking(true); setError('')
+    try {
+      const result = await api.speakText(text)
+      if (!result.ok || !result.data_url) throw new Error('Gateway did not return audio')
+      audioRef.current?.pause()
+      const audio = new Audio(result.data_url)
+      audioRef.current = audio
+      audio.onended = () => setPlaying(false)
+      audio.onerror = () => { setPlaying(false); setError('Unable to play spoken reply') }
+      await audio.play()
+      setPlaying(true)
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to speak reply') } finally { setWorking(false) }
+  }
+  return <div className="flex items-center gap-2 pt-1"><button className="rounded px-1.5 py-1 text-[0.68rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary) disabled:opacity-40" disabled={working} onClick={() => void toggle()} type="button"><Codicon name={working ? 'loading' : playing ? 'mute' : 'unmute'} className={working ? 'animate-spin' : undefined} /> <span className="ml-1">{working ? 'Preparing audio…' : playing ? 'Stop reading' : 'Read aloud'}</span></button>{error ? <span className="text-[0.65rem] text-(--ui-red)">{error}</span> : null}</div>
 }
 
 function ThinkingAccordion({ reasoning }: { reasoning: string }) {

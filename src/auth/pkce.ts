@@ -1,7 +1,5 @@
 import { gatewayFetch } from '@/gateway/fetch'
 
-const REDIRECT_URI = 'rhermes-mobile://oauth/callback'
-
 function base64UrlEncode(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let binary = ''
@@ -37,7 +35,7 @@ export function buildAuthorizeUrl(
   gatewayUrl: string,
   challenge: string,
   state: string,
-  redirectUri = REDIRECT_URI
+  redirectUri: string
 ): string {
   const base = gatewayUrl.replace(/\/+$/, '')
   const params = new URLSearchParams({
@@ -56,7 +54,7 @@ export interface OAuthCallbackResult {
   state: string
 }
 
-export function parseOAuthCallback(url: string, expectedRedirectUri = REDIRECT_URI): OAuthCallbackResult | null {
+export function parseOAuthCallback(url: string, expectedRedirectUri: string): OAuthCallbackResult | null {
   try {
     const parsed = new URL(url)
     const expected = new URL(expectedRedirectUri)
@@ -195,5 +193,3 @@ export async function requestWsTicket(
 
   return data.ticket
 }
-
-export { REDIRECT_URI }

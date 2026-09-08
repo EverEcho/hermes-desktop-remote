@@ -6,6 +6,7 @@ import type { CustomEndpoint, CustomEndpointsResponse, EnvVarInfo, OAuthProvider
 import { Button, Spinner } from '@/ui/Button'
 import { Input } from '@/ui/Input'
 import { cn } from '@/ui/utils'
+import { openExternalUrl } from '@/native'
 
 import { providerGroup } from '../helpers'
 import { ZapIcon } from '../icons'
@@ -55,7 +56,7 @@ function AccountsView() {
   const [providers, setProviders] = useState<OAuthProvider[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [pending, setPending] = useState<{ provider: OAuthProvider; userCode?: string; verificationUrl?: string } | null>(null)
+  const [pending, setPending] = useState<{ provider: OAuthProvider; sessionId: string; userCode?: string; verificationUrl?: string } | null>(null)
   const pollTimer = useRef<number | null>(null)
 
   const load = useCallback(() => {
@@ -84,12 +85,12 @@ function AccountsView() {
       const start = await api.startOAuthLogin(provider.id)
 
       if (start.flow === 'pkce') {
-        window.open(start.auth_url, '_blank')
-        setPending({ provider })
+        void openExternalUrl(start.auth_url)
+        setPending({ provider, sessionId: start.session_id })
         beginPolling(provider, start.session_id, 2000)
       } else {
-        window.open(start.verification_url, '_blank')
-        setPending({ provider, userCode: start.user_code, verificationUrl: start.verification_url })
+        void openExternalUrl(start.verification_url)
+        setPending({ provider, sessionId: start.session_id, userCode: start.user_code, verificationUrl: start.verification_url })
         beginPolling(provider, start.session_id, start.poll_interval * 1000 || 5000)
       }
     } catch (err) {
@@ -170,10 +171,11 @@ function AccountsView() {
           </Caption>
           {pending.userCode && <Caption className="font-mono">{p.userCodeHint(pending.userCode)}</Caption>}
           {pending.verificationUrl && (
-            <Button onClick={() => window.open(pending.verificationUrl, '_blank')} size="sm" variant="outline">
+            <Button onClick={() => void openExternalUrl(pending.verificationUrl!)} size="sm" variant="outline">
               {p.openSignIn}
             </Button>
           )}
+          <Button onClick={() => { if (pollTimer.current) window.clearInterval(pollTimer.current); pollTimer.current = null; void api.cancelOAuthSession(pending.sessionId).catch(() => undefined); setPending(null) }} size="sm" variant="text">Cancel</Button>
         </div>
       )}
     </div>
@@ -190,6 +192,8 @@ function ApiKeysView() {
   const [editing, setEditing] = useState<{ key: string; info: EnvVarInfo } | null>(null)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [testingKey, setTestingKey] = useState(false)
+  const [keyValidation, setKeyValidation] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -250,6 +254,7 @@ function ApiKeysView() {
           onClick={() => {
             setEditing({ key, info })
             setDraft('')
+            setKeyValidation('')
           }}
           title={<span className="font-mono text-(--conversation-tool-font-size)">{key}</span>}
         />
@@ -270,7 +275,21 @@ function ApiKeysView() {
               type="password"
               value={draft}
             />
+            {keyValidation ? <Caption className={keyValidation.startsWith('Valid') ? 'text-emerald-600' : 'text-(--ui-red)'}>{keyValidation}</Caption> : null}
             <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={!draft.trim() || saving || testingKey}
+                onClick={() => {
+                  setTestingKey(true); setKeyValidation('')
+                  void api.validateProviderCredential(editing.key, draft.trim()).then(result => {
+                    setKeyValidation(result.ok ? `Valid${result.models?.length ? ` · ${result.models.length} models found` : ''}` : result.message || 'Credential validation failed.')
+                  }).catch(reason => setKeyValidation(reason instanceof Error ? reason.message : 'Credential validation failed.')).finally(() => setTestingKey(false))
+                }}
+                variant="secondary"
+              >
+                {testingKey ? 'Testing…' : 'Test'}
+              </Button>
               <Button
                 className="flex-1"
                 disabled={!draft.trim() || saving}
@@ -330,6 +349,8 @@ function EndpointsView() {
   const [editing, setEditing] = useState<null | { id?: string }>(null)
   const [form, setForm] = useState({ apiKey: '', baseUrl: '', discover: true, model: '', name: '' })
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [validation, setValidation] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -364,6 +385,15 @@ function EndpointsView() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const validate = async () => {
+    if (!form.name.trim() || !form.baseUrl.trim() || !form.model.trim()) return
+    setTesting(true); setValidation('')
+    try {
+      const result = await api.validateCustomEndpoint({ ...(form.apiKey.trim() ? { api_key: form.apiKey.trim() } : {}), base_url: form.baseUrl.trim(), discover_models: form.discover, ...(editing?.id ? { id: editing.id } : {}), model: form.model.trim(), name: form.name.trim() })
+      setValidation(result.ok ? `Connected${result.models.length ? ` · ${result.models.length} models found` : ''}` : result.message || 'Endpoint validation failed.')
+    } catch (reason) { setValidation(reason instanceof Error ? reason.message : 'Endpoint validation failed.') } finally { setTesting(false) }
   }
 
   if (loading) {
@@ -410,6 +440,7 @@ function EndpointsView() {
           key={endpoint.id}
           onClick={() => {
             setEditing({ id: endpoint.id })
+            setValidation('')
             setForm({ apiKey: '', baseUrl: endpoint.base_url, discover: endpoint.discover_models, model: endpoint.model, name: endpoint.name })
           }}
           title={endpoint.name}
@@ -420,6 +451,7 @@ function EndpointsView() {
         className="mt-2"
         onClick={() => {
           setEditing({})
+          setValidation('')
           setForm({ apiKey: '', baseUrl: '', discover: true, model: '', name: '' })
         }}
         size="sm"
@@ -444,7 +476,11 @@ function EndpointsView() {
               <Caption>{p.discoverModels}</Caption>
               <Toggle checked={form.discover} onChange={on => setForm(prev => ({ ...prev, discover: on }))} />
             </div>
+            {validation ? <Caption className={validation.startsWith('Connected') ? 'text-emerald-600' : 'text-(--ui-red)'}>{validation}</Caption> : null}
             <div className="flex gap-2">
+              <Button className="flex-1" disabled={!form.name.trim() || !form.baseUrl.trim() || !form.model.trim() || saving || testing} onClick={() => void validate()} variant="secondary">
+                {testing ? 'Testing…' : 'Test'}
+              </Button>
               <Button className="flex-1" disabled={!form.name.trim() || !form.baseUrl.trim() || !form.model.trim() || saving} onClick={() => void save()}>
                 {t.common.save}
               </Button>

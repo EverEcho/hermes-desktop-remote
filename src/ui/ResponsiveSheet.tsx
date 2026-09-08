@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react'
 
 import { MobileSheet } from './BottomSheet'
 import { cn } from './utils'
-import { useIsDesktop } from './useMediaQuery'
+import { useAppSurface } from '@/bootstrap/surface-context'
 
 interface ResponsiveSheetProps {
   open: boolean
@@ -13,9 +13,9 @@ interface ResponsiveSheetProps {
   compact?: boolean
 }
 
-/** Bottom sheet on phones; centered dialog (desktop-settings style) on md+. */
+/** Presentation follows the boot-selected app surface, never a resize event. */
 export function ResponsiveSheet({ open, onClose, title, children, compact }: ResponsiveSheetProps) {
-  const isDesktop = useIsDesktop()
+  const isDesktop = useAppSurface() === 'desktop'
 
   useEffect(() => {
     if (!open || !isDesktop) {

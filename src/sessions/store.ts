@@ -6,9 +6,19 @@ import type { MobileMessage, MobileMessagePart } from '@/types/mobile'
 import * as api from '@/gateway/api'
 import { onGatewayEvent, restorePendingSessionInputs } from '@/gateway'
 import { translateNow } from '@/i18n'
+import { getActiveProfile } from '@/gateway/http-client'
 
 export const $sessions = atom<SessionInfo[]>([])
+/** Source-scoped sidebar streams. They stay outside `$sessions` so a burst of
+ * cron or messaging traffic cannot evict ordinary conversations from recents. */
+export const $cronSessions = atom<SessionInfo[]>([])
+export const $messagingSessions = atom<SessionInfo[]>([])
 export const $sessionsLoading = atom(true)
+export const $sessionsLoadingMore = atom(false)
+export const $sessionsHasMore = atom(false)
+export type SessionScope = 'active' | 'all'
+export const $sessionScope = atom<SessionScope>('active')
+const $sessionsNextOffset = atom(0)
 export const $activeSessionId = atom<string | null>(null)
 export const $activeRuntimeId = atom<string | null>(null)
 export const $messages = atom<MobileMessage[]>([])
@@ -23,21 +33,97 @@ export const $currentReasoningEffort = atom('medium')
 export const $currentFast = atom(false)
 export const $currentCwd = atom('')
 export const $sessionTitle = atom<string | null>(null)
+export interface QueuedPrompt {
+  attachments: NonNullable<SendMessageOptions['attachments']>
+  id: string
+  options: Omit<SendMessageOptions, 'attachments'>
+  text: string
+}
+/** Queues are client-side but keyed by the durable Gateway session id, so a
+ * desktop tab switch or mobile drawer does not lose a follow-up. */
+export const $queuedPrompts = atom<Record<string, QueuedPrompt[]>>({})
+
+const MESSAGING_SOURCES = [
+  'telegram', 'discord', 'slack', 'mattermost', 'matrix', 'signal', 'whatsapp',
+  'bluebubbles', 'photon', 'homeassistant', 'email', 'sms', 'webhook',
+  'api_server', 'weixin', 'wecom', 'qqbot', 'yuanbao', 'dingtalk', 'feishu'
+]
+const RECENT_EXCLUDED_SOURCES = ['cron', 'kanban', 'subagent', 'tool', ...MESSAGING_SOURCES]
+const MESSAGING_EXCLUDED_SOURCES = ['cron', 'cli', 'codex', 'desktop', 'gateway', 'kanban', 'local', 'tui']
 
 let eventCleanup: (() => void) | null = null
 let activeSessionGeneration = 0
 let transcriptOffset = 0
+let drainingQueuedPrompt = false
+let queuedDrainTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Clear profile-scoped sidebar state before a connection/profile re-home.
+ * Durable sessions remain on the Gateway; this only prevents profile A rows
+ * from being rendered under profile B while the new index is loading. */
+export function clearSessionLists(): void {
+  $sessions.set([])
+  $cronSessions.set([])
+  $messagingSessions.set([])
+  $sessionsNextOffset.set(0)
+  $sessionsHasMore.set(false)
+  $sessionsLoading.set(true)
+  $sessionsLoadingMore.set(false)
+}
 
 export async function refreshSessions(): Promise<void> {
   $sessionsLoading.set(true)
 
   try {
-    const result = await api.listSessions(50)
-    $sessions.set(result.sessions)
+    const scope = $sessionScope.get()
+    const result = await api.listSidebarSessions({
+      recentsProfile: scope === 'all' ? 'all' : getActiveProfile(),
+      recentsLimit: 50,
+      cronLimit: 30,
+      messagingLimit: 50,
+      recentsExclude: RECENT_EXCLUDED_SOURCES,
+      messagingExclude: MESSAGING_EXCLUDED_SOURCES
+    })
+    $sessions.set(result.recents.sessions)
+    $cronSessions.set(result.cron.sessions)
+    $messagingSessions.set(result.messaging.sessions)
+    // The batched endpoint deliberately avoids a costly exact total. A full
+    // recents window is enough to offer another page; pagination below keeps
+    // using the stable source filter.
+    const nextOffset = result.recents.sessions.filter(session => !session.pinned).length
+    $sessionsNextOffset.set(nextOffset)
+    $sessionsHasMore.set(result.recents.sessions.length >= 50)
   } catch {
     // keep existing
   } finally {
     $sessionsLoading.set(false)
+  }
+}
+
+export function setSessionScope(scope: SessionScope): void {
+  if ($sessionScope.get() === scope) return
+  $sessionScope.set(scope)
+  void refreshSessions()
+}
+
+/** Fetch the next remote page without discarding the sidebar window. */
+export async function loadMoreSessions(): Promise<void> {
+  if ($sessionsLoadingMore.get() || !$sessionsHasMore.get()) return
+
+  $sessionsLoadingMore.set(true)
+  try {
+    const current = $sessions.get()
+    const result = $sessionScope.get() === 'all'
+      ? await api.listAllProfileSessions(50, 'exclude', 'recent', $sessionsNextOffset.get(), { excludeSources: RECENT_EXCLUDED_SOURCES })
+      : await api.listSessions(50, 'exclude', 'recent', $sessionsNextOffset.get(), { excludeSources: RECENT_EXCLUDED_SOURCES })
+    const known = new Set(current.map(session => session.id))
+    $sessions.set([...current, ...result.sessions.filter(session => !known.has(session.id))])
+    const nextOffset = result.offset + result.limit
+    $sessionsNextOffset.set(nextOffset)
+    $sessionsHasMore.set(nextOffset < result.total)
+  } catch {
+    // Keep the loaded window and leave the control available for retry.
+  } finally {
+    $sessionsLoadingMore.set(false)
   }
 }
 
@@ -101,6 +187,7 @@ export async function openSession(storedSessionId: string): Promise<void> {
     }
 
     $messages.set(appendInflightProjection(restored, resumeResult))
+    if (!resumeResult.info?.running) scheduleQueuedPromptDrain()
   } catch (_error) {
     if (generation !== activeSessionGeneration) {
       return
@@ -120,6 +207,21 @@ export async function openSession(storedSessionId: string): Promise<void> {
     } catch {
       // session may not exist yet
     }
+  }
+}
+
+/** Fork a conversation through the connected Gateway and focus the child.
+ * The server owns transcript truncation, lineage, and profile routing. */
+export async function branchStoredSession(storedSessionId: string): Promise<string | null> {
+  try {
+    const result = await api.branchSession(storedSessionId)
+    const childId = result.stored_session_id ?? result.session_id
+    if (!childId) return null
+    await refreshSessions()
+    await openSession(childId)
+    return childId
+  } catch {
+    return null
   }
 }
 
@@ -198,16 +300,79 @@ export interface SendMessageOptions {
   truncateBeforeUserOrdinal?: number
 }
 
+export function enqueuePrompt(text: string, options: SendMessageOptions = {}): boolean {
+  const sessionId = $activeSessionId.get()
+  const trimmed = text.trim()
+  if (!sessionId || !trimmed) return false
+  const entry: QueuedPrompt = {
+    attachments: options.attachments ?? [],
+    id: `queue-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    options: {
+      model: options.model,
+      provider: options.provider,
+      reasoningEffort: options.reasoningEffort
+    },
+    text: trimmed
+  }
+  $queuedPrompts.set({
+    ...$queuedPrompts.get(),
+    [sessionId]: [...($queuedPrompts.get()[sessionId] ?? []), entry]
+  })
+  return true
+}
+
+export function removeQueuedPrompt(sessionId: string, entryId: string): void {
+  const current = $queuedPrompts.get()
+  const next = (current[sessionId] ?? []).filter(entry => entry.id !== entryId)
+  const updated = { ...current }
+  if (next.length) updated[sessionId] = next
+  else delete updated[sessionId]
+  $queuedPrompts.set(updated)
+}
+
+/** Explicit resume for a queued follow-up after a transient Gateway failure. */
+export function drainQueuedPromptsNow(): void {
+  scheduleQueuedPromptDrain()
+}
+
+async function drainQueuedPrompt(): Promise<void> {
+  if (drainingQueuedPrompt || $busy.get()) return
+  const sessionId = $activeSessionId.get()
+  if (!sessionId) return
+  const entry = $queuedPrompts.get()[sessionId]?.[0]
+  if (!entry) return
+
+  drainingQueuedPrompt = true
+  try {
+    const accepted = await sendMessage(entry.text, { ...entry.options, attachments: entry.attachments })
+    if (accepted) removeQueuedPrompt(sessionId, entry.id)
+  } finally {
+    drainingQueuedPrompt = false
+  }
+}
+
+/** Completion and `running:false` can arrive as adjacent WS events. Let that
+ * terminal pair settle before submitting the next entry, rather than letting a
+ * stale status event flip a just-started queued turn back to idle. */
+function scheduleQueuedPromptDrain(): void {
+  if (queuedDrainTimer) return
+  const targetSessionId = $activeSessionId.get()
+  queuedDrainTimer = setTimeout(() => {
+    queuedDrainTimer = null
+    if (targetSessionId === $activeSessionId.get()) void drainQueuedPrompt()
+  }, 40)
+}
+
 export async function sendMessage(
   text: string,
   options?: SendMessageOptions
-): Promise<void> {
+): Promise<boolean> {
   const runtimeId = $activeRuntimeId.get()
   const storedSessionId = $activeSessionId.get()
   const generation = activeSessionGeneration
 
   if (!runtimeId || !storedSessionId || !text.trim()) {
-    return
+    return false
   }
 
   const userMessage: MobileMessage = {
@@ -226,9 +391,10 @@ export async function sendMessage(
 
   try {
     await submitPromptWithRecovery(runtimeId, storedSessionId, text.trim(), options)
+    return true
   } catch (error) {
     if (generation !== activeSessionGeneration || storedSessionId !== $activeSessionId.get()) {
-      return
+      return false
     }
 
     $busy.set(false)
@@ -251,6 +417,7 @@ export async function sendMessage(
     }
 
     $messages.set([...$messages.get(), errorMessage])
+    return false
   }
 }
 
@@ -259,6 +426,44 @@ export async function retryMessage(errorMessageId: string, text: string, userMes
     message.id !== errorMessageId && message.id !== userMessageId
   ))
   await sendMessage(text)
+}
+
+/** Redirect an in-flight Gateway turn with a text-only correction. The old
+ * reply remains visible, while the Gateway starts (or queues) the correction
+ * at the next safe model boundary. */
+export async function redirectMessage(text: string): Promise<boolean> {
+  const runtimeId = $activeRuntimeId.get()
+  const storedSessionId = $activeSessionId.get()
+  const trimmed = text.trim()
+  if (!runtimeId || !storedSessionId || !trimmed || !$busy.get()) return false
+
+  const message: MobileMessage = {
+    id: `redirect-${Date.now()}`,
+    role: 'user',
+    parts: [{ type: 'text', text: trimmed }],
+    timestamp: Date.now() / 1000
+  }
+  $messages.set([...finalizeInterruptedMessages($messages.get()), message])
+
+  try {
+    let result: { status?: 'queued' | 'redirected' | 'rejected' }
+    try {
+      result = await api.redirectSession(runtimeId, trimmed)
+    } catch (error) {
+      if (!/session not found/i.test(error instanceof Error ? error.message : String(error))) throw error
+      // A websocket reconnect can leave a stale runtime id while the stored
+      // session remains valid. Re-resume once before treating it as failed.
+      const resumed = await api.resumeSession(storedSessionId, { omitMessages: true })
+      $activeRuntimeId.set(resumed.session_id)
+      result = await api.redirectSession(resumed.session_id, trimmed)
+    }
+    if (result.status === 'redirected' || result.status === 'queued') return true
+  } catch {
+    // The optimistic row is removed below; the composer retains its draft.
+  }
+
+  $messages.set($messages.get().filter(candidate => candidate.id !== message.id))
+  return false
 }
 
 export function appendSystemMessage(text: string): void {
@@ -618,6 +823,7 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       )
       $messages.set(updated)
       void refreshSessions()
+      scheduleQueuedPromptDrain()
       break
     }
 
@@ -723,6 +929,7 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
         if (!payload.running) {
           $awaitingResponse.set(false)
           $messages.set(finalizeInterruptedMessages($messages.get()))
+          scheduleQueuedPromptDrain()
         }
       }
       break
@@ -735,6 +942,7 @@ function handleSessionEvent(event: GatewayEvent, generation: number): void {
       $busy.set(false)
       $awaitingResponse.set(false)
       $messages.set(finalizeInterruptedMessages($messages.get()))
+      scheduleQueuedPromptDrain()
       break
     }
 

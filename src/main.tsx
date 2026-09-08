@@ -2,14 +2,31 @@ import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
 
-import { App } from './App'
+import { RootApp } from './bootstrap/RootApp'
+import { isDesktopLikeBrowser, normalizeRuntimePlatform, resolveAppSurface } from './bootstrap/runtime'
 import { initializeNativeAdapters, onAppStateChange, onNetworkChange, onKeyboardHeightChange } from './native'
 import { reconnectGateway } from './gateway'
 import { initThemeMode } from './settings/theme-store'
 import './styles.css'
 
-const runtimePlatform = Capacitor.getPlatform()
+const runtimePlatform = normalizeRuntimePlatform(Capacitor.getPlatform())
 document.documentElement.dataset.platform = runtimePlatform
+
+const surfaceOverride = new URLSearchParams(window.location.search).get('surface') ?? import.meta.env.VITE_APP_SURFACE
+const savedSurface = (() => {
+  try {
+    return window.localStorage.getItem('rhermes.surface')
+  } catch {
+    return null
+  }
+})()
+const appSurface = resolveAppSurface({
+  desktopLike: isDesktopLikeBrowser(window),
+  platform: runtimePlatform,
+  savedSurface,
+  surfaceOverride
+})
+document.documentElement.dataset.surface = appSurface
 
 if (runtimePlatform === 'tauri') {
   document.documentElement.dataset.desktopOs = /Macintosh|Mac OS X/i.test(navigator.userAgent)
@@ -59,6 +76,6 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <LifecycleManager />
-    <App />
+    <RootApp surface={appSurface} />
   </StrictMode>
 )

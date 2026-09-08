@@ -54,12 +54,58 @@ export interface TerminalOutput {
   exitCode?: number
 }
 
+export type SubagentStatus = 'completed' | 'failed' | 'interrupted' | 'queued' | 'running'
+
+export interface SubagentProgress {
+  goal: string
+  id: string
+  sessionId: string
+  status: SubagentStatus
+  summary?: string
+  tool?: string
+  updatedAt: number
+}
+
 export const $pendingApprovals = atom<ApprovalRequest[]>([])
 export const $pendingClarifications = atom<ClarifyRequest[]>([])
 export const $pendingSecrets = atom<SecretRequest[]>([])
 export const $pendingSudo = atom<SudoRequest[]>([])
 export const $pendingMcpSetup = atom<McpSetupRequest[]>([])
 export const $terminalOutputs = atom<Map<string, TerminalOutput>>(new Map())
+export const $subagentsBySession = atom<Map<string, SubagentProgress[]>>(new Map())
+
+const SUBAGENT_EVENT_TYPES = new Set(['subagent.spawn_requested', 'subagent.start', 'subagent.thinking', 'subagent.tool', 'subagent.progress', 'subagent.complete'])
+
+function toSubagentStatus(value: unknown, terminal: boolean): SubagentStatus {
+  if (value === 'completed' || value === 'failed' || value === 'interrupted' || value === 'queued' || value === 'running') return value
+  if (value === 'error' || value === 'timeout') return 'failed'
+  if (value === 'cancelled' || value === 'canceled') return 'interrupted'
+  return terminal ? 'failed' : 'running'
+}
+
+function upsertSubagent(sessionId: string, payload: Record<string, unknown>, eventType: string): void {
+  const fallbackGoal = 'Subagent'
+  const goal = typeof payload.goal === 'string' && payload.goal ? payload.goal : fallbackGoal
+  const id = typeof payload.subagent_id === 'string' && payload.subagent_id
+    ? payload.subagent_id
+    : `${String(payload.parent_id ?? 'root')}:${String(payload.task_index ?? 0)}:${goal}`
+  const current = $subagentsBySession.get()
+  const list = current.get(sessionId) ?? []
+  const existing = list.find(item => item.id === id)
+  if (existing && ['completed', 'failed', 'interrupted'].includes(existing.status)) return
+  const status = toSubagentStatus(payload.status, eventType === 'subagent.complete')
+  const next: SubagentProgress = {
+    id,
+    sessionId,
+    goal: typeof payload.goal === 'string' && payload.goal ? payload.goal : existing?.goal ?? fallbackGoal,
+    status,
+    summary: typeof payload.summary === 'string' ? payload.summary : typeof payload.text === 'string' ? payload.text : existing?.summary,
+    tool: typeof payload.tool_name === 'string' ? payload.tool_name : existing?.tool,
+    updatedAt: Date.now()
+  }
+  current.set(sessionId, existing ? list.map(item => item.id === id ? next : item) : [...list, next])
+  $subagentsBySession.set(new Map(current))
+}
 
 type EventCallback = (event: GatewayEvent) => void
 
@@ -160,6 +206,10 @@ export function restorePendingSessionInputs(sessionId: string, response: Session
 function routeEvent(event: GatewayEvent): void {
   const payload = (event.payload ?? {}) as Record<string, unknown>
   const sessionId = event.session_id ?? ''
+
+  if (SUBAGENT_EVENT_TYPES.has(event.type) && sessionId) {
+    upsertSubagent(sessionId, payload, event.type)
+  }
 
   /* Sidebar status dots (Desktop session-states parity, simplified). */
   switch (event.type) {

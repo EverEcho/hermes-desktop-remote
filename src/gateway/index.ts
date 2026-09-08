@@ -2,6 +2,7 @@ export { ApiError, apiRequest, apiUpload, configureHttpClient, getActiveProfile,
 export {
   $connectionState,
   $gateway,
+  $gatewayProfile,
   connectGateway,
   disconnectGateway,
   getGateway,
@@ -17,6 +18,7 @@ export {
   $pendingSudo,
   $pendingMcpSetup,
   $terminalOutputs,
+  $subagentsBySession,
   onGatewayEvent,
   restorePendingSessionInputs,
   resolveApproval,
@@ -32,5 +34,6 @@ export {
   type SecretRequest,
   type SudoRequest,
   type McpSetupRequest,
-  type TerminalOutput
+  type TerminalOutput,
+  type SubagentProgress
 } from './event-router'

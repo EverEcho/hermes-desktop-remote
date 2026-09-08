@@ -21,19 +21,26 @@ import {
   saveConnection,
   saveCredentials,
   saveSessionToken,
+  selectConnection,
   type StoredConnection
 } from './token-store'
 import { gatewayTargetHeaders, resolveGatewayRequestUrl } from '@/gateway/request-url'
 import { gatewayFetch } from '@/gateway/fetch'
-import { isTauriPlatform, openExternalUrl } from '@/native'
+import { isMobileNativePlatform, isTauriPlatform, openExternalUrl } from '@/native'
+import {
+  closeEmbeddedLoopbackOAuth,
+  createEmbeddedLoopbackRedirectUri,
+  openEmbeddedLoopbackOAuth,
+  supportsEmbeddedLoopbackOAuth
+} from '@/native/oauth-webview'
 
 type TauriUnlisten = () => void
 
 export type AuthState =
   | { status: 'unknown' }
-  | { status: 'unauthenticated' }
+  | { status: 'unauthenticated'; connectionId?: string; gatewayUrl?: string; profile?: string }
   | { status: 'authenticating' }
-  | { status: 'authenticated'; gatewayUrl: string; authMode: 'oauth' | 'token' | 'cookie'; profile: string }
+  | { status: 'authenticated'; connectionId: string; gatewayUrl: string; authMode: 'oauth' | 'token' | 'cookie'; profile: string }
   | { status: 'auth-required' }
   | { status: 'error'; message: string }
 
@@ -53,6 +60,12 @@ interface LoginTransaction {
 }
 
 let activeLogin: LoginTransaction | null = null
+
+function unauthenticatedConnection(connection?: StoredConnection): AuthState {
+  return connection
+    ? { status: 'unauthenticated', connectionId: connection.id, gatewayUrl: connection.gatewayUrl, profile: connection.profile }
+    : { status: 'unauthenticated' }
+}
 
 function cleanupLoginTransaction(): void {
   if (!activeLogin) {
@@ -78,6 +91,8 @@ function cleanupLoginTransaction(): void {
     )
   }
 
+  void closeEmbeddedLoopbackOAuth()
+
   if (activeLogin.timeout) {
     clearTimeout(activeLogin.timeout)
     activeLogin.timeout = null
@@ -96,10 +111,10 @@ export async function initializeAuth(): Promise<void> {
   }
 
   if (conn.authMode === 'token') {
-    const token = await loadSessionToken()
+    const token = await loadSessionToken(conn.id)
 
     if (!token) {
-      $authState.set({ status: 'unauthenticated' })
+      $authState.set(unauthenticatedConnection(conn))
 
       return
     }
@@ -108,6 +123,7 @@ export async function initializeAuth(): Promise<void> {
       status: 'authenticated',
       gatewayUrl: conn.gatewayUrl,
       authMode: 'token',
+      connectionId: conn.id,
       profile: conn.profile
     })
 
@@ -117,29 +133,29 @@ export async function initializeAuth(): Promise<void> {
   if (conn.authMode === 'cookie') {
     try {
       await verifyCookieSession(conn.gatewayUrl)
-      $authState.set({ status: 'authenticated', gatewayUrl: conn.gatewayUrl, authMode: 'cookie', profile: conn.profile })
+      $authState.set({ status: 'authenticated', connectionId: conn.id, gatewayUrl: conn.gatewayUrl, authMode: 'cookie', profile: conn.profile })
     } catch {
       // The persisted connection only records the gateway URL; the browser
       // session cookie itself can expire or be cleared. Do not reconnect the
       // WebSocket against a known-invalid cookie and leave it in a retry loop.
-      $authState.set({ status: 'unauthenticated' })
+      $authState.set(unauthenticatedConnection(conn))
     }
     return
   }
 
-  const creds = await loadCredentials()
+  const creds = await loadCredentials(conn.id)
 
   if (!creds) {
-    $authState.set({ status: 'unauthenticated' })
+    $authState.set(unauthenticatedConnection(conn))
 
     return
   }
 
   if (isTokenExpiringSoon(creds.expiresAt)) {
     try {
-      await doRefresh(conn.gatewayUrl, creds.refreshToken, creds.provider)
+      await doRefresh(conn.gatewayUrl, creds.refreshToken, creds.provider, conn.id)
     } catch {
-      $authState.set({ status: 'unauthenticated' })
+      $authState.set(unauthenticatedConnection(conn))
 
       return
     }
@@ -149,10 +165,11 @@ export async function initializeAuth(): Promise<void> {
     status: 'authenticated',
     gatewayUrl: conn.gatewayUrl,
     authMode: 'oauth',
+    connectionId: conn.id,
     profile: conn.profile
   })
 
-  scheduleRefresh(conn.gatewayUrl)
+  scheduleRefresh(conn.gatewayUrl, conn.id)
 }
 
 export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): Promise<void> {
@@ -185,6 +202,8 @@ export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): 
       tx.redirectUri = await invoke<string>('start_oauth_loopback', {
         expectedState: pkce.state
       })
+    } else if (supportsEmbeddedLoopbackOAuth()) {
+      tx.redirectUri = createEmbeddedLoopbackRedirectUri()
     } else {
       tx.listener = await App.addListener('appUrlOpen', ({ url }) => {
         void handleOAuthCallback(url)
@@ -198,18 +217,20 @@ export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): 
       }
     }, 300_000)
 
-    const authUrl = buildAuthorizeUrl(
-      gatewayUrl,
-      pkce.challenge,
-      pkce.state,
-      tx.redirectUri ?? undefined
-    )
+    if (!tx.redirectUri) {
+      throw new Error('Native OAuth requires a loopback callback URL')
+    }
+
+    const authUrl = buildAuthorizeUrl(gatewayUrl, pkce.challenge, pkce.state, tx.redirectUri)
     if (isTauriPlatform() && tx.redirectUri) {
       const { invoke } = await import('@tauri-apps/api/core')
       await invoke('open_oauth_webview', {
         authorizeUrl: authUrl,
         redirectUri: tx.redirectUri
       })
+    } else if (isMobileNativePlatform() && tx.redirectUri) {
+      const callbackUrl = await openEmbeddedLoopbackOAuth(authUrl, tx.redirectUri)
+      await handleOAuthCallback(callbackUrl)
     } else {
       await openExternalUrl(authUrl)
     }
@@ -225,11 +246,11 @@ export async function startOAuthLogin(gatewayUrl: string, profile = 'default'): 
 async function handleOAuthCallback(url: string): Promise<void> {
   const tx = activeLogin
 
-  if (!tx || tx.settled) {
+  if (!tx || tx.settled || !tx.redirectUri) {
     return
   }
 
-  const callback = parseOAuthCallback(url, tx.redirectUri ?? undefined)
+  const callback = parseOAuthCallback(url, tx.redirectUri)
 
   if (!callback) {
     return
@@ -249,24 +270,25 @@ async function handleOAuthCallback(url: string): Promise<void> {
   try {
     const tokens = await exchangeCodeForTokens(tx.gatewayUrl, callback.code, tx.pkce.verifier)
 
+    const connection = await saveConnection({ gatewayUrl: tx.gatewayUrl, authMode: 'oauth', profile: tx.profile })
+
     await saveCredentials({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
       provider: tokens.provider,
       userId: tokens.userId
-    })
-
-    await saveConnection({ gatewayUrl: tx.gatewayUrl, authMode: 'oauth', profile: tx.profile })
+    }, connection.id)
 
     $authState.set({
       status: 'authenticated',
-      gatewayUrl: tx.gatewayUrl,
+      connectionId: connection.id,
+      gatewayUrl: connection.gatewayUrl,
       authMode: 'oauth',
       profile: tx.profile
     })
 
-    scheduleRefresh(tx.gatewayUrl)
+    scheduleRefresh(tx.gatewayUrl, connection.id)
   } catch (error) {
     $authState.set({
       status: 'error',
@@ -294,10 +316,10 @@ export async function loginWithToken(
       throw new Error(`Connection failed (${response.status})`)
     }
 
-    await saveSessionToken(token)
-    await saveConnection({ gatewayUrl, authMode: 'token', profile, sessionToken: token })
+    const connection = await saveConnection({ gatewayUrl, authMode: 'token', profile })
+    await saveSessionToken(token, connection.id)
 
-    $authState.set({ status: 'authenticated', gatewayUrl, authMode: 'token', profile })
+    $authState.set({ status: 'authenticated', connectionId: connection.id, gatewayUrl: connection.gatewayUrl, authMode: 'token', profile })
   } catch (error) {
     $authState.set({
       status: 'error',
@@ -311,8 +333,8 @@ export async function loginWithCookie(gatewayUrl: string, profile = 'default'): 
 
   try {
     await verifyCookieSession(gatewayUrl)
-    await saveConnection({ gatewayUrl, authMode: 'cookie', profile })
-    $authState.set({ status: 'authenticated', gatewayUrl, authMode: 'cookie', profile })
+    const connection = await saveConnection({ gatewayUrl, authMode: 'cookie', profile })
+    $authState.set({ status: 'authenticated', connectionId: connection.id, gatewayUrl: connection.gatewayUrl, authMode: 'cookie', profile })
   } catch (error) {
     $authState.set({ status: 'error', message: error instanceof Error ? error.message : 'Cookie sign-in failed' })
   }
@@ -338,8 +360,63 @@ export async function logout(): Promise<void> {
     refreshTimer = null
   }
 
-  await clearAllAuth()
-  $authState.set({ status: 'unauthenticated' })
+  const state = $authState.get()
+  const connectionId = state.status === 'authenticated' ? state.connectionId : undefined
+  await clearAllAuth(connectionId)
+  $authState.set(state.status === 'authenticated'
+    ? { status: 'unauthenticated', connectionId: state.connectionId, gatewayUrl: state.gatewayUrl, profile: state.profile }
+    : { status: 'unauthenticated' })
+}
+
+/**
+ * Re-homes the client onto another persisted remote Gateway. No local process
+ * is started; the gateway bootstrap hook observes this state transition and
+ * rebuilds only the socket-bound workspace.
+ */
+export async function switchConnection(connectionId: string): Promise<void> {
+  cleanupLoginTransaction()
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+
+  const { clearSessionLists, closeSession } = await import('@/sessions/store')
+  closeSession()
+  clearSessionLists()
+  await selectConnection(connectionId)
+  $authState.set({ status: 'unknown' })
+  await initializeAuth()
+}
+
+/** Profiles are server-side namespaces on the active remote Gateway. */
+export async function switchProfile(profile: string): Promise<void> {
+  const state = $authState.get()
+
+  if (state.status !== 'authenticated') {
+    throw new Error('Authentication required')
+  }
+
+  const nextProfile = profile.trim() || 'default'
+  if (nextProfile === state.profile) return
+
+  const connection = await saveConnection({
+    authMode: state.authMode,
+    gatewayUrl: state.gatewayUrl,
+    id: state.connectionId,
+    profile: nextProfile
+  })
+
+  // A transcript belongs to the previous server-side profile. Clear its
+  // in-memory runtime before the bootstrap reconnects, so profile A can never
+  // briefly render under profile B while the new session index loads.
+  const { clearSessionLists, closeSession } = await import('@/sessions/store')
+  closeSession()
+  clearSessionLists()
+
+  // The shared gateway bootstrap observes this atom update and recreates its
+  // HTTP + WebSocket clients under the selected profile. No local process is
+  // started for profile switching.
+  $authState.set({ ...state, gatewayUrl: connection.gatewayUrl, profile: connection.profile })
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -350,10 +427,10 @@ export async function getAccessToken(): Promise<string | null> {
   }
 
   if (state.authMode === 'token') {
-    return loadSessionToken()
+    return loadSessionToken(state.connectionId)
   }
 
-  const creds = await loadCredentials()
+  const creds = await loadCredentials(state.connectionId)
 
   if (!creds) {
     return null
@@ -361,9 +438,9 @@ export async function getAccessToken(): Promise<string | null> {
 
   if (isTokenExpiringSoon(creds.expiresAt)) {
     try {
-      await doRefresh(state.gatewayUrl, creds.refreshToken, creds.provider)
+      await doRefresh(state.gatewayUrl, creds.refreshToken, creds.provider, state.connectionId)
 
-      return (await loadCredentials())?.accessToken ?? null
+      return (await loadCredentials(state.connectionId))?.accessToken ?? null
     } catch {
       return null
     }
@@ -373,17 +450,19 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 export async function getWsTicket(gatewayUrl: string): Promise<string> {
-  const creds = await loadCredentials()
+  const state = $authState.get()
+  const connectionId = state.status === 'authenticated' ? state.connectionId : undefined
+  const creds = await loadCredentials(connectionId)
 
   if (!creds) {
     throw new Error('No credentials available')
   }
 
   if (isTokenExpiringSoon(creds.expiresAt)) {
-    await doRefresh(gatewayUrl, creds.refreshToken, creds.provider)
+    await doRefresh(gatewayUrl, creds.refreshToken, creds.provider, connectionId)
   }
 
-  const fresh = await loadCredentials()
+  const fresh = await loadCredentials(connectionId)
 
   if (!fresh) {
     throw new Error('Credentials lost during refresh')
@@ -392,7 +471,7 @@ export async function getWsTicket(gatewayUrl: string): Promise<string> {
   return requestWsTicket(gatewayUrl, fresh.accessToken)
 }
 
-async function doRefresh(gatewayUrl: string, refreshToken: string, provider: string): Promise<void> {
+async function doRefresh(gatewayUrl: string, refreshToken: string, provider: string, connectionId?: string): Promise<void> {
   const tokens = await refreshAccessToken(gatewayUrl, refreshToken, provider)
 
   await saveCredentials({
@@ -401,16 +480,16 @@ async function doRefresh(gatewayUrl: string, refreshToken: string, provider: str
     expiresAt: tokens.expiresAt,
     provider: tokens.provider,
     userId: tokens.userId
-  })
+  }, connectionId)
 }
 
-function scheduleRefresh(gatewayUrl: string): void {
+function scheduleRefresh(gatewayUrl: string, connectionId: string): void {
   if (refreshTimer) {
     clearTimeout(refreshTimer)
   }
 
   void (async () => {
-    const creds = await loadCredentials()
+    const creds = await loadCredentials(connectionId)
 
     if (!creds) {
       return
@@ -421,13 +500,13 @@ function scheduleRefresh(gatewayUrl: string): void {
     const delayMs = delaySeconds * 1000
 
     refreshTimer = setTimeout(() => {
-      void doRefresh(gatewayUrl, creds.refreshToken, creds.provider)
-        .then(() => scheduleRefresh(gatewayUrl))
+      void doRefresh(gatewayUrl, creds.refreshToken, creds.provider, connectionId)
+        .then(() => scheduleRefresh(gatewayUrl, connectionId))
         .catch(error => {
           if (error instanceof TokenRefreshAuthError) {
             $authState.set({ status: 'auth-required' })
           } else {
-            scheduleRefresh(gatewayUrl)
+            scheduleRefresh(gatewayUrl, connectionId)
           }
         })
     }, delayMs)

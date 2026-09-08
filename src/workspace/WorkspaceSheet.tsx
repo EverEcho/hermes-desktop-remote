@@ -37,6 +37,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const [commitMessage, setCommitMessage] = useState('')
   const [gitError, setGitError] = useState<string | null>(null)
   const [diffView, setDiffView] = useState<{ path: string; diff: string } | null>(null)
+  const [ghAuth, setGhAuth] = useState<{ available: boolean; authenticated: boolean } | null>(null)
 
   useEffect(() => {
     if (!open) {
@@ -64,6 +65,8 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
       .gitStatus(currentPath)
       .then(status => setGitStatus(normalizeGitStatus(status)))
       .catch(() => setGitStatus(null))
+
+    api.getGhAuthStatus().then(setGhAuth).catch(() => setGhAuth(null))
   }, [open, currentPath])
 
   const navigateTo = (path: string) => {
@@ -297,6 +300,7 @@ export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
               <p className="text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">
                 {t.workspace.branch} <span className="font-mono text-(--ui-text-secondary)">{gitStatus.branch}</span>
               </p>
+              {ghAuth ? <div className="flex items-center justify-between rounded-md bg-(--ui-bg-quaternary) px-2.5 py-2 text-[0.68rem]"><span className="text-(--ui-text-tertiary)">GitHub CLI on Gateway</span><span className={ghAuth.authenticated ? 'text-(--ui-green)' : 'text-(--ui-text-quaternary)'}>{!ghAuth.available ? 'Not installed' : ghAuth.authenticated ? 'Authenticated' : 'Not signed in'}</span><button className="text-(--ui-accent)" onClick={() => void api.getGhAuthStatus(true).then(setGhAuth).catch(() => setGhAuth(null))}>Refresh</button></div> : null}
 
               {gitStatus.staged.length > 0 && (
                 <div>

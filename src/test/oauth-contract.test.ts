@@ -1,49 +1,48 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildAuthorizeUrl, parseOAuthCallback, parseTokenResponse, REDIRECT_URI } from '@/auth/pkce'
+import { buildAuthorizeUrl, parseOAuthCallback, parseTokenResponse } from '@/auth/pkce'
+
+const redirectUri = 'http://127.0.0.1:53142/oauth/callback'
 
 describe('OAuth PKCE protocol alignment', () => {
-  it('builds authorize URL with S256 challenge and mobile redirect URI', () => {
-    const url = buildAuthorizeUrl('https://gw.example.com', 'challenge123', 'state456')
+  it('builds authorize URL with S256 challenge and a native loopback redirect URI', () => {
+    const url = buildAuthorizeUrl('https://gw.example.com', 'challenge123', 'state456', redirectUri)
 
     expect(url).toContain('https://gw.example.com/auth/native/authorize')
     expect(url).toContain('code_challenge=challenge123')
     expect(url).toContain('code_challenge_method=S256')
-    expect(url).toContain(`redirect_uri=${encodeURIComponent(REDIRECT_URI)}`)
+    expect(url).toContain(`redirect_uri=${encodeURIComponent(redirectUri)}`)
     expect(url).toContain('state=state456')
     expect(url).toContain('response_type=code')
   })
 
   it('strips trailing slashes from gateway URL', () => {
-    const url = buildAuthorizeUrl('https://gw.example.com///', 'c', 's')
+    const url = buildAuthorizeUrl('https://gw.example.com///', 'c', 's', redirectUri)
 
     expect(url.startsWith('https://gw.example.com/auth/native/authorize')).toBe(true)
   })
 
   it('builds a desktop authorize URL with a loopback redirect URI', () => {
-    const redirectUri = 'http://127.0.0.1:53142/oauth/callback'
     const url = buildAuthorizeUrl('https://gw.example.com', 'c', 's', redirectUri)
 
     expect(url).toContain(`redirect_uri=${encodeURIComponent(redirectUri)}`)
   })
 
-  it('parses a valid OAuth callback URL', () => {
-    const result = parseOAuthCallback('rhermes-mobile://oauth/callback?code=abc123&state=xyz789')
+  it('parses a valid loopback OAuth callback URL', () => {
+    const result = parseOAuthCallback(`${redirectUri}?code=abc123&state=xyz789`, redirectUri)
 
     expect(result).toEqual({ code: 'abc123', state: 'xyz789' })
   })
 
   it('rejects callback with missing code', () => {
-    expect(parseOAuthCallback('rhermes-mobile://oauth/callback?state=xyz')).toBeNull()
+    expect(parseOAuthCallback(`${redirectUri}?state=xyz`, redirectUri)).toBeNull()
   })
 
   it('rejects callback with wrong scheme', () => {
-    expect(parseOAuthCallback('https://evil.com/callback?code=abc&state=xyz')).toBeNull()
+    expect(parseOAuthCallback('https://evil.com/callback?code=abc&state=xyz', redirectUri)).toBeNull()
   })
 
   it('parses only the exact desktop loopback callback', () => {
-    const redirectUri = 'http://127.0.0.1:53142/oauth/callback'
-
     expect(
       parseOAuthCallback(
         'http://127.0.0.1:53142/oauth/callback?code=desktop-code&state=desktop-state',
@@ -59,7 +58,7 @@ describe('OAuth PKCE protocol alignment', () => {
   })
 
   it('rejects non-URL input', () => {
-    expect(parseOAuthCallback('not a url')).toBeNull()
+    expect(parseOAuthCallback('not a url', redirectUri)).toBeNull()
   })
 
   it('parses token response with expires_at (epoch seconds) and provider', () => {

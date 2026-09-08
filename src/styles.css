@@ -186,8 +186,8 @@ html[data-platform='tauri'][data-desktop-os='macos'] {
   --tauri-titlebar-height: 36px;
 }
 
-html[data-platform='tauri'][data-desktop-os='macos'] #root {
-  padding-top: var(--tauri-titlebar-height);
+html[data-surface='desktop'] #root {
+  padding-top: var(--tauri-titlebar-height, 36px);
 }
 
 html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
@@ -209,11 +209,11 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
 }
 
 @media (min-width: 768px) {
-  html[data-platform='tauri'] .app-mobile-header {
+  html[data-surface='desktop'] .app-mobile-header {
     display: none;
   }
 
-  html[data-platform='tauri'] .desktop-titlebar {
+  html[data-surface='desktop'] .desktop-titlebar {
     position: fixed;
     z-index: 1001;
     top: 0;
@@ -226,15 +226,24 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     border-bottom: 1px solid var(--ui-stroke-tertiary);
     background: color-mix(in srgb, var(--ui-bg-chrome) 94%, transparent);
     padding: 0 6px;
+    -webkit-app-region: drag;
   }
 
-  html[data-platform='tauri'] .desktop-titlebar-traffic-spacer {
+  /* Tauri's drag region is intentionally limited to title-bar chrome. Native
+   * window controls and gateway controls remain clickable rather than being
+   * swallowed by the webview's drag hit-test. */
+  html[data-surface='desktop'] .desktop-titlebar button,
+  html[data-surface='desktop'] .desktop-titlebar select {
+    -webkit-app-region: no-drag;
+  }
+
+  html[data-surface='desktop'] .desktop-titlebar-traffic-spacer {
     width: 70px;
     height: 100%;
     flex: 0 0 auto;
   }
 
-  html[data-platform='tauri'] .desktop-titlebar-title {
+  html[data-surface='desktop'] .desktop-titlebar-title {
     display: flex;
     min-width: 0;
     flex: 1;
@@ -246,9 +255,31 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     font-weight: 600;
   }
 
-  html[data-platform='tauri'] .desktop-titlebar-button,
-  html[data-platform='tauri'] .desktop-titlebar-connection,
-  html[data-platform='tauri'] .desktop-workspace-action {
+  html[data-surface='desktop'] .desktop-titlebar-connection-select,
+  html[data-surface='desktop'] .desktop-titlebar-profile-select {
+    max-width: 12rem;
+    height: 22px;
+    flex: 0 1 10rem;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--ui-text-tertiary);
+    font: inherit;
+    font-size: 0.6875rem;
+    outline: none;
+  }
+
+  html[data-surface='desktop'] .desktop-titlebar-connection-select:hover,
+  html[data-surface='desktop'] .desktop-titlebar-connection-select:focus,
+  html[data-surface='desktop'] .desktop-titlebar-profile-select:hover,
+  html[data-surface='desktop'] .desktop-titlebar-profile-select:focus {
+    background: var(--chrome-action-hover);
+    color: var(--ui-text-primary);
+  }
+
+  html[data-surface='desktop'] .desktop-titlebar-button,
+  html[data-surface='desktop'] .desktop-titlebar-connection,
+  html[data-surface='desktop'] .desktop-workspace-action {
     display: grid;
     width: 26px;
     height: 26px;
@@ -258,20 +289,20 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     color: var(--ui-text-tertiary);
   }
 
-  html[data-platform='tauri'] .desktop-titlebar-button:hover,
-  html[data-platform='tauri'] .desktop-titlebar-connection:hover,
-  html[data-platform='tauri'] .desktop-workspace-action:hover,
-  html[data-platform='tauri'] .desktop-titlebar-button.is-active {
+  html[data-surface='desktop'] .desktop-titlebar-button:hover,
+  html[data-surface='desktop'] .desktop-titlebar-connection:hover,
+  html[data-surface='desktop'] .desktop-workspace-action:hover,
+  html[data-surface='desktop'] .desktop-titlebar-button.is-active {
     background: var(--chrome-action-hover);
     color: var(--ui-text-primary);
   }
 
-  html[data-platform='tauri'] .desktop-titlebar-button:disabled {
+  html[data-surface='desktop'] .desktop-titlebar-button:disabled {
     opacity: 0.35;
     pointer-events: none;
   }
 
-  html[data-platform='tauri'] .desktop-workspace-panel {
+  html[data-surface='desktop'] .desktop-workspace-panel {
     display: flex;
     width: 17rem;
     min-width: 12rem;
@@ -282,7 +313,7 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     background: var(--ui-bg-sidebar);
   }
 
-  html[data-platform='tauri'] .desktop-workspace-header {
+  html[data-surface='desktop'] .desktop-workspace-header {
     display: flex;
     height: 34px;
     flex: 0 0 auto;
@@ -292,7 +323,17 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     padding: 0 5px 0 9px;
   }
 
-  html[data-platform='tauri'] .desktop-workspace-root {
+  html[data-surface='desktop'] .desktop-file-preview-toolbar {
+    display: flex;
+    min-width: 0;
+    height: 34px;
+    flex: 0 0 auto;
+    align-items: center;
+    border-bottom: 1px solid var(--ui-stroke-tertiary);
+    padding: 0 5px;
+  }
+
+  html[data-surface='desktop'] .desktop-workspace-root {
     display: flex;
     min-width: 0;
     flex: 1;
@@ -305,7 +346,7 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     text-transform: uppercase;
   }
 
-  html[data-platform='tauri'] .desktop-file-row {
+  html[data-surface='desktop'] .desktop-file-row {
     display: flex;
     width: 100%;
     height: 22px;
@@ -318,12 +359,12 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     text-align: left;
   }
 
-  html[data-platform='tauri'] .desktop-file-row:hover {
+  html[data-surface='desktop'] .desktop-file-row:hover {
     background: var(--chrome-action-hover);
     color: var(--ui-text-primary);
   }
 
-  html[data-platform='tauri'] .desktop-file-chevron {
+  html[data-surface='desktop'] .desktop-file-chevron {
     display: inline-grid;
     width: 11px;
     flex: 0 0 auto;
@@ -331,7 +372,7 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     font-size: 0.58rem;
   }
 
-  html[data-platform='tauri'] .desktop-file-preview-back {
+  html[data-surface='desktop'] .desktop-file-preview-back {
     display: flex;
     height: 32px;
     flex: 0 0 auto;
@@ -343,7 +384,7 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     font-size: 0.6875rem;
   }
 
-  html[data-platform='tauri'] .desktop-file-preview {
+  html[data-surface='desktop'] .desktop-file-preview {
     min-height: 0;
     flex: 1;
     overflow: auto;
@@ -356,6 +397,43 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
     user-select: text;
     white-space: pre-wrap;
   }
+
+  html[data-surface='desktop'] .desktop-file-editor {
+    min-height: 0;
+    width: 100%;
+    flex: 1;
+    resize: none;
+    border: 0;
+    background: var(--ui-bg-chrome);
+    color: var(--ui-text-primary);
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    outline: none;
+  }
+
+html[data-surface='desktop'] .desktop-file-save-error {
+    border-top: 1px solid var(--ui-stroke-tertiary);
+    color: var(--ui-red);
+    padding: 6px 9px;
+    font-size: 0.68rem;
+  }
+}
+
+.webhook-input {
+  width: 100%;
+  border: 1px solid var(--ui-stroke-tertiary);
+  border-radius: 0.375rem;
+  background: var(--ui-bg-card);
+  color: var(--ui-text-primary);
+  padding: 0.4rem 0.55rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.webhook-input:focus {
+  border-color: var(--ui-accent);
 }
 
 body {

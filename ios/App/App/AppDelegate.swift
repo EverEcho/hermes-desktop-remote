@@ -1,5 +1,151 @@
 import UIKit
 import Capacitor
+import WebKit
+
+class RHermesBridgeViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(OAuthWebViewPlugin())
+    }
+}
+
+@objc(OAuthWebViewPlugin)
+class OAuthWebViewPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigationDelegate {
+    let identifier = "OAuthWebViewPlugin"
+    let jsName = "OAuthWebView"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise)
+    ]
+
+    private var expectedRedirect: URL?
+    private var pendingCall: CAPPluginCall?
+    private weak var presentedController: UIViewController?
+
+    @objc func open(_ call: CAPPluginCall) {
+        guard
+            let authorizeString = call.getString("authorizeUrl"),
+            let authorizeURL = URL(string: authorizeString),
+            ["http", "https"].contains(authorizeURL.scheme?.lowercased() ?? ""),
+            let redirectString = call.getString("redirectUri"),
+            let redirectURL = validLoopbackRedirect(redirectString)
+        else {
+            call.reject("OAuth requires an HTTP authorization URL and http://127.0.0.1:<port>/oauth/callback redirect URI")
+            return
+        }
+
+        rejectPending("OAuth sign-in was replaced by a newer request")
+        expectedRedirect = redirectURL
+        pendingCall = call
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let host = self.bridge?.viewController else {
+                self?.rejectPending("Unable to present OAuth sign-in")
+                return
+            }
+
+            let controller = UIViewController()
+            controller.view.backgroundColor = .systemBackground
+
+            let webView = WKWebView(frame: .zero)
+            webView.navigationDelegate = self
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            webView.configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+            let closeButton = UIButton(type: .system)
+            closeButton.setTitle("Cancel", for: .normal)
+            closeButton.translatesAutoresizingMaskIntoConstraints = false
+            closeButton.addAction(UIAction { [weak self] _ in
+                self?.dismissAndReject("OAuth sign-in was cancelled")
+            }, for: .touchUpInside)
+
+            controller.view.addSubview(closeButton)
+            controller.view.addSubview(webView)
+            NSLayoutConstraint.activate([
+                closeButton.leadingAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+                closeButton.topAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.topAnchor, constant: 8),
+                closeButton.heightAnchor.constraint(equalToConstant: 36),
+                webView.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor),
+                webView.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 8),
+                webView.bottomAnchor.constraint(equalTo: controller.view.bottomAnchor)
+            ])
+
+            controller.modalPresentationStyle = .fullScreen
+            self.presentedController = controller
+            host.present(controller, animated: true) {
+                webView.load(URLRequest(url: authorizeURL))
+            }
+        }
+    }
+
+    @objc func close(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            self?.dismissAndReject("OAuth sign-in was cancelled")
+            call.resolve()
+        }
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let callback = navigationAction.request.url, matchesRedirect(callback) else {
+            decisionHandler(.allow)
+            return
+        }
+
+        decisionHandler(.cancel)
+        resolveCallback(callback)
+    }
+
+    private func validLoopbackRedirect(_ value: String) -> URL? {
+        guard
+            let url = URL(string: value),
+            url.scheme?.lowercased() == "http",
+            url.host == "127.0.0.1",
+            url.port != nil,
+            url.path == "/oauth/callback"
+        else {
+            return nil
+        }
+        return url
+    }
+
+    private func matchesRedirect(_ callback: URL) -> Bool {
+        guard let expected = expectedRedirect else { return false }
+        return callback.scheme?.lowercased() == expected.scheme?.lowercased()
+            && callback.host == expected.host
+            && callback.port == expected.port
+            && callback.path == expected.path
+    }
+
+    private func resolveCallback(_ callback: URL) {
+        let call = pendingCall
+        pendingCall = nil
+        expectedRedirect = nil
+        dismissPresented()
+        call?.resolve(["url": callback.absoluteString])
+    }
+
+    private func dismissAndReject(_ message: String) {
+        let call = pendingCall
+        pendingCall = nil
+        expectedRedirect = nil
+        dismissPresented()
+        call?.reject(message)
+    }
+
+    private func rejectPending(_ message: String) {
+        guard let call = pendingCall else { return }
+        pendingCall = nil
+        expectedRedirect = nil
+        dismissPresented()
+        call.reject(message)
+    }
+
+    private func dismissPresented() {
+        guard let controller = presentedController else { return }
+        presentedController = nil
+        controller.dismiss(animated: true)
+    }
+}
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {

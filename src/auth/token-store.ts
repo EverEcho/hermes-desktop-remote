@@ -1,14 +1,28 @@
 import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import { Preferences } from '@capacitor/preferences'
 
+import {
+  addRemoteGatewayConnection,
+  createEmptyRemoteGatewayRegistry,
+  getActiveRemoteGatewayConnection,
+  normalizeGatewayUrl,
+  parseRemoteGatewayRegistry,
+  selectRemoteGatewayConnection,
+  updateRemoteGatewayConnection,
+  type GatewayAuthMode,
+  type RemoteGatewayRegistry
+} from '@/core/connections/registry'
 import { isNativePlatform } from '@/native'
 
-const SECURE_KEYS = {
+const PRIMARY_CONNECTION_ID = 'primary'
+const REGISTRY_KEY = 'rhermes.connections.v1'
+
+const LEGACY_SECURE_KEYS = {
   credentials: 'rhermes.creds',
   sessionToken: 'rhermes.session_token'
 } as const
 
-const CONFIG_KEYS = {
+const LEGACY_CONFIG_KEYS = {
   gatewayUrl: 'rhermes.config.gateway_url',
   authMode: 'rhermes.config.auth_mode',
   profile: 'rhermes.config.profile'
@@ -16,118 +30,235 @@ const CONFIG_KEYS = {
 
 export interface StoredCredentials {
   accessToken: string
-  refreshToken: string
   expiresAt: number
   provider: string
+  refreshToken: string
   userId: string
 }
 
 export interface StoredConnection {
+  authMode: GatewayAuthMode
   gatewayUrl: string
-  authMode: 'oauth' | 'token' | 'cookie'
+  id: string
   profile: string
   sessionToken?: string
 }
 
-export async function saveCredentials(creds: StoredCredentials): Promise<void> {
-  await SecureStorage.set(SECURE_KEYS.credentials, JSON.stringify(creds))
+export type StoredConnectionInput = Omit<StoredConnection, 'id'> & { id?: string }
+
+function scopedSecureKey(key: string, connectionId: string): string {
+  return `${key}.${encodeURIComponent(connectionId)}`
 }
 
-export async function loadCredentials(): Promise<StoredCredentials | null> {
-  const raw = await SecureStorage.get(SECURE_KEYS.credentials)
+function normalizeConnectionId(value: string | undefined): string {
+  return value?.trim() || PRIMARY_CONNECTION_ID
+}
 
-  if (raw === null) {
-    return null
+function createConnectionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `gateway-${crypto.randomUUID()}`
   }
+
+  return `gateway-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function parseCredentials(raw: unknown): StoredCredentials | null {
+  if (!raw || typeof raw !== 'object') return null
+  const value = raw as Record<string, unknown>
+  if (typeof value.accessToken !== 'string' || !value.accessToken) return null
+
+  return {
+    accessToken: value.accessToken,
+    expiresAt: typeof value.expiresAt === 'number' && Number.isFinite(value.expiresAt) ? value.expiresAt : 0,
+    provider: typeof value.provider === 'string' ? value.provider : '',
+    refreshToken: typeof value.refreshToken === 'string' ? value.refreshToken : '',
+    userId: typeof value.userId === 'string' ? value.userId : ''
+  }
+}
+
+async function loadCredentialsForKey(key: string): Promise<StoredCredentials | null> {
+  const raw = await SecureStorage.get(key)
+  if (raw === null) return null
 
   try {
-    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
-
-    return parsed as StoredCredentials
+    const credentials = parseCredentials(typeof raw === 'string' ? JSON.parse(raw) : raw)
+    if (credentials) return credentials
   } catch {
-    await SecureStorage.remove(SECURE_KEYS.credentials)
-
-    return null
+    // Fall through to remove malformed secrets.
   }
+
+  await SecureStorage.remove(key)
+  return null
 }
 
-export async function saveSessionToken(token: string): Promise<void> {
-  if (!isNativePlatform()) {
-    window.sessionStorage.setItem(SECURE_KEYS.sessionToken, token)
+export async function saveCredentials(creds: StoredCredentials, connectionId = PRIMARY_CONNECTION_ID): Promise<void> {
+  await SecureStorage.set(scopedSecureKey(LEGACY_SECURE_KEYS.credentials, normalizeConnectionId(connectionId)), JSON.stringify(creds))
+}
 
+export async function loadCredentials(connectionId = PRIMARY_CONNECTION_ID): Promise<StoredCredentials | null> {
+  const id = normalizeConnectionId(connectionId)
+  const scoped = await loadCredentialsForKey(scopedSecureKey(LEGACY_SECURE_KEYS.credentials, id))
+  if (scoped || id !== PRIMARY_CONNECTION_ID) return scoped
+
+  // v0 stored a single global credential. Only the migrated primary route may
+  // consume it; no other connection can accidentally inherit this secret.
+  return loadCredentialsForKey(LEGACY_SECURE_KEYS.credentials)
+}
+
+export async function saveSessionToken(token: string, connectionId = PRIMARY_CONNECTION_ID): Promise<void> {
+  const id = normalizeConnectionId(connectionId)
+  const key = scopedSecureKey(LEGACY_SECURE_KEYS.sessionToken, id)
+
+  if (!isNativePlatform()) {
+    window.sessionStorage.setItem(key, token)
     return
   }
 
-  await SecureStorage.set(SECURE_KEYS.sessionToken, token)
+  await SecureStorage.set(key, token)
 }
 
-export async function loadSessionToken(): Promise<string | null> {
+export async function loadSessionToken(connectionId = PRIMARY_CONNECTION_ID): Promise<string | null> {
+  const id = normalizeConnectionId(connectionId)
+  const key = scopedSecureKey(LEGACY_SECURE_KEYS.sessionToken, id)
+
   if (!isNativePlatform()) {
-    return window.sessionStorage.getItem(SECURE_KEYS.sessionToken)
+    return window.sessionStorage.getItem(key) ??
+      (id === PRIMARY_CONNECTION_ID ? window.sessionStorage.getItem(LEGACY_SECURE_KEYS.sessionToken) : null)
   }
 
-  const raw = await SecureStorage.get(SECURE_KEYS.sessionToken)
+  const scoped = await SecureStorage.get(key)
+  if (typeof scoped === 'string') return scoped
+  if (id !== PRIMARY_CONNECTION_ID) return null
 
-  if (raw === null) {
-    return null
-  }
-
-  return typeof raw === 'string' ? raw : null
+  const legacy = await SecureStorage.get(LEGACY_SECURE_KEYS.sessionToken)
+  return typeof legacy === 'string' ? legacy : null
 }
 
-export async function saveConnection(conn: StoredConnection): Promise<void> {
-  await Promise.all([
-    Preferences.set({ key: CONFIG_KEYS.gatewayUrl, value: conn.gatewayUrl }),
-    Preferences.set({ key: CONFIG_KEYS.authMode, value: conn.authMode }),
-    Preferences.set({ key: CONFIG_KEYS.profile, value: conn.profile })
+async function migrateLegacyRegistry(): Promise<RemoteGatewayRegistry> {
+  const [gatewayUrl, authMode, profile] = await Promise.all([
+    Preferences.get({ key: LEGACY_CONFIG_KEYS.gatewayUrl }),
+    Preferences.get({ key: LEGACY_CONFIG_KEYS.authMode }),
+    Preferences.get({ key: LEGACY_CONFIG_KEYS.profile })
   ])
 
-  if (conn.sessionToken) {
-    await saveSessionToken(conn.sessionToken)
+  if (!gatewayUrl.value) return createEmptyRemoteGatewayRegistry()
+
+  const savedAuthMode = authMode.value
+  const connectionAuthMode: GatewayAuthMode =
+    savedAuthMode === 'cookie' || savedAuthMode === 'oauth' || savedAuthMode === 'token' ? savedAuthMode : 'token'
+
+  try {
+    const registry = addRemoteGatewayConnection(
+      createEmptyRemoteGatewayRegistry(),
+      { authMode: connectionAuthMode, baseUrl: gatewayUrl.value, profile: profile.value ?? 'default' },
+      { id: PRIMARY_CONNECTION_ID, now: Date.now() }
+    )
+    await Preferences.set({ key: REGISTRY_KEY, value: JSON.stringify(registry) })
+    return registry
+  } catch {
+    return createEmptyRemoteGatewayRegistry()
   }
+}
+
+export async function loadRemoteGatewayRegistry(): Promise<RemoteGatewayRegistry> {
+  const saved = await Preferences.get({ key: REGISTRY_KEY })
+  if (saved.value === null) return migrateLegacyRegistry()
+
+  try {
+    return parseRemoteGatewayRegistry(JSON.parse(saved.value)) ?? createEmptyRemoteGatewayRegistry()
+  } catch {
+    return createEmptyRemoteGatewayRegistry()
+  }
+}
+
+export async function saveRemoteGatewayRegistry(registry: RemoteGatewayRegistry): Promise<void> {
+  await Preferences.set({ key: REGISTRY_KEY, value: JSON.stringify(registry) })
+}
+
+/**
+ * Writes a connection into the remote-only registry and selects it for the
+ * next bootstrap. Existing routes retain their stable ID and scoped secrets.
+ */
+export async function saveConnection(input: StoredConnectionInput): Promise<StoredConnection> {
+  const registry = await loadRemoteGatewayRegistry()
+  const gatewayUrl = normalizeGatewayUrl(input.gatewayUrl)
+  const profile = input.profile.trim() || 'default'
+  const existing = input.id
+    ? registry.connections.find(connection => connection.id === input.id)
+    : registry.connections.find(connection => connection.baseUrl === gatewayUrl && connection.profile === profile)
+  const id = existing?.id ?? (registry.connections.length === 0 && !input.id
+    ? PRIMARY_CONNECTION_ID
+    : input.id?.trim() || createConnectionId())
+
+  const nextRegistry = existing
+    ? updateRemoteGatewayConnection(registry, id, {
+      authMode: input.authMode,
+      baseUrl: gatewayUrl,
+      name: existing.name,
+      profile
+    }, Date.now())
+    : addRemoteGatewayConnection(registry, {
+      authMode: input.authMode,
+      baseUrl: gatewayUrl,
+      profile
+    }, { id, now: Date.now() })
+
+  await saveRemoteGatewayRegistry(selectRemoteGatewayConnection(nextRegistry, id))
+
+  if (input.sessionToken) await saveSessionToken(input.sessionToken, id)
+
+  return { authMode: input.authMode, gatewayUrl, id, profile }
 }
 
 export async function loadConnection(): Promise<StoredConnection | null> {
-  const [gatewayUrl, authMode, profile] = await Promise.all([
-    Preferences.get({ key: CONFIG_KEYS.gatewayUrl }),
-    Preferences.get({ key: CONFIG_KEYS.authMode }),
-    Preferences.get({ key: CONFIG_KEYS.profile })
-  ])
+  const active = getActiveRemoteGatewayConnection(await loadRemoteGatewayRegistry())
+  if (!active) return null
 
-  if (!gatewayUrl?.value) {
-    return null
-  }
-
-  const sessionToken = await loadSessionToken()
-
+  const sessionToken = await loadSessionToken(active.id)
   return {
-    gatewayUrl: gatewayUrl.value,
-    authMode: (authMode?.value as 'oauth' | 'token' | 'cookie') ?? 'token',
-    profile: profile?.value ?? 'default',
+    authMode: active.authMode,
+    gatewayUrl: active.baseUrl,
+    id: active.id,
+    profile: active.profile,
     sessionToken: sessionToken ?? undefined
   }
 }
 
-export function isTokenExpiringSoon(expiresAt: number, bufferSeconds = 60): boolean {
-  if (!expiresAt || !Number.isFinite(expiresAt)) {
-    return true
+/** Selects an existing remote Gateway without creating or mutating a route. */
+export async function selectConnection(connectionId: string): Promise<StoredConnection> {
+  const registry = await loadRemoteGatewayRegistry()
+  const selected = selectRemoteGatewayConnection(registry, connectionId)
+  const connection = getActiveRemoteGatewayConnection(selected)
+  if (!connection) throw new Error(`Unknown Gateway connection: ${connectionId}`)
+
+  await saveRemoteGatewayRegistry(selected)
+  return {
+    authMode: connection.authMode,
+    gatewayUrl: connection.baseUrl,
+    id: connection.id,
+    profile: connection.profile
   }
-
-  const nowSeconds = Date.now() / 1000
-
-  return nowSeconds >= expiresAt - bufferSeconds
 }
 
-export async function clearAllAuth(): Promise<void> {
+export function isTokenExpiringSoon(expiresAt: number, bufferSeconds = 60): boolean {
+  if (!expiresAt || !Number.isFinite(expiresAt)) return true
+  return Date.now() / 1000 >= expiresAt - bufferSeconds
+}
+
+/** Clears only one connection's secret material; registry metadata remains. */
+export async function clearAllAuth(connectionId = PRIMARY_CONNECTION_ID): Promise<void> {
+  const id = normalizeConnectionId(connectionId)
+  const credentialKey = scopedSecureKey(LEGACY_SECURE_KEYS.credentials, id)
+  const tokenKey = scopedSecureKey(LEGACY_SECURE_KEYS.sessionToken, id)
+
   if (!isNativePlatform()) {
-    window.sessionStorage.removeItem(SECURE_KEYS.sessionToken)
+    window.sessionStorage.removeItem(tokenKey)
+    if (id === PRIMARY_CONNECTION_ID) window.sessionStorage.removeItem(LEGACY_SECURE_KEYS.sessionToken)
   }
 
-  await Promise.all([
-    SecureStorage.remove(SECURE_KEYS.credentials),
-    SecureStorage.remove(SECURE_KEYS.sessionToken),
-    Preferences.remove({ key: CONFIG_KEYS.gatewayUrl }),
-    Preferences.remove({ key: CONFIG_KEYS.authMode }),
-    Preferences.remove({ key: CONFIG_KEYS.profile })
-  ])
+  const removals: Promise<unknown>[] = [SecureStorage.remove(credentialKey), SecureStorage.remove(tokenKey)]
+  if (id === PRIMARY_CONNECTION_ID) {
+    removals.push(SecureStorage.remove(LEGACY_SECURE_KEYS.credentials), SecureStorage.remove(LEGACY_SECURE_KEYS.sessionToken))
+  }
+  await Promise.all(removals)
 }

@@ -16,20 +16,43 @@ export function DesktopWorkspacePanel({ cwd, onClose, onOpenWorkspace }: Desktop
   const { t } = useI18n()
   const [refreshKey, setRefreshKey] = useState(0)
   const [file, setFile] = useState<{ path: string; content: string } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const rootName = useMemo(() => cwd.split('/').filter(Boolean).pop() || cwd, [cwd])
 
   useEffect(() => {
     setFile(null)
+    setEditing(false)
+    setSaveError(null)
   }, [cwd])
 
   const openFile = useCallback(async (entry: FsListEntry) => {
     try {
       const result = await api.fsReadText(entry.path)
       setFile({ path: entry.path, content: result.content })
+      setEditing(false)
+      setSaveError(null)
     } catch {
       setFile(null)
     }
   }, [])
+
+  const saveFile = useCallback(async () => {
+    if (!file || saving) return
+
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await api.fsWriteText(file.path, file.content)
+      setEditing(false)
+      setRefreshKey(value => value + 1)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Unable to save file')
+    } finally {
+      setSaving(false)
+    }
+  }, [file, saving])
 
   return (
     <aside className="desktop-workspace-panel">
@@ -52,11 +75,43 @@ export function DesktopWorkspacePanel({ cwd, onClose, onOpenWorkspace }: Desktop
 
       {file ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <button className="desktop-file-preview-back" onClick={() => setFile(null)}>
-            <Codicon name="chevron-left" />
-            <span className="truncate">{file.path.split('/').pop()}</span>
-          </button>
-          <pre className="desktop-file-preview">{file.content}</pre>
+          <div className="desktop-file-preview-toolbar">
+            <button className="desktop-file-preview-back" onClick={() => { setFile(null); setEditing(false) }}>
+              <Codicon name="chevron-left" />
+              <span className="truncate">{file.path.split('/').pop()}</span>
+            </button>
+            {editing ? (
+              <>
+                <button
+                  className="desktop-workspace-action"
+                  disabled={saving}
+                  onClick={() => { setEditing(false); setSaveError(null) }}
+                  title="Discard file edits"
+                >
+                  <Codicon name="discard" />
+                </button>
+                <button className="desktop-workspace-action" disabled={saving} onClick={() => void saveFile()} title="Save file">
+                  <Codicon name={saving ? 'loading' : 'save'} className={saving ? 'animate-spin' : undefined} />
+                </button>
+              </>
+            ) : (
+              <button className="desktop-workspace-action" onClick={() => setEditing(true)} title="Edit file">
+                <Codicon name="edit" />
+              </button>
+            )}
+          </div>
+          {editing ? (
+            <textarea
+              aria-label={`Edit ${file.path.split('/').pop()}`}
+              className="desktop-file-editor"
+              onChange={event => setFile(current => current ? { ...current, content: event.target.value } : current)}
+              spellCheck={false}
+              value={file.content}
+            />
+          ) : (
+            <pre className="desktop-file-preview">{file.content}</pre>
+          )}
+          {saveError ? <div className="desktop-file-save-error">{saveError}</div> : null}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1 no-scrollbar">

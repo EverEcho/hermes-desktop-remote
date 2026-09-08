@@ -2,7 +2,7 @@ import { type ConnectionState, JsonRpcGatewayClient } from '@/shared'
 import { atom } from 'nanostores'
 
 import { getWsTicket, $authState } from '@/auth'
-import { getGatewayBaseUrl, setActiveProfile } from './http-client'
+import { getActiveProfile, getGatewayBaseUrl, setActiveProfile } from './http-client'
 import { gatewayTargetHeaders } from './request-url'
 import { gatewayFetch } from './fetch'
 
@@ -53,6 +53,10 @@ export type MobileConnectionState =
 
 export const $connectionState = atom<MobileConnectionState>('idle')
 export const $gateway = atom<MobileGateway | null>(null)
+/** Profile that the currently-open WebSocket was authenticated/configured for.
+ * `connectionState === open` alone is insufficient during a profile re-home:
+ * React can render the new profile before the old socket's close event lands. */
+export const $gatewayProfile = atom<string | null>(null)
 
 let gateway: MobileGateway | null = null
 let reconnectAttempt = 0
@@ -81,7 +85,7 @@ export async function connectGateway(profile?: string): Promise<void> {
   wantOpen = true
   reconnectAttempt = 0
 
-  if (gateway?.connectionState === 'open') {
+  if (gateway?.connectionState === 'open' && $gatewayProfile.get() === getActiveProfile()) {
     return
   }
 
@@ -98,6 +102,7 @@ async function doConnect(): Promise<void> {
   }
 
   $connectionState.set(reconnectAttempt > 0 ? 'reconnecting' : 'connecting')
+  const requestedProfile = getActiveProfile()
 
   try {
     const baseUrl = getGatewayBaseUrl()
@@ -114,7 +119,7 @@ async function doConnect(): Promise<void> {
       wsUrl = `${wsBase}/api/ws?ticket=${encodeURIComponent(ticket)}`
     } else if (authState.authMode === 'token') {
       const { loadSessionToken } = await import('@/auth/token-store')
-      const token = await loadSessionToken()
+      const token = await loadSessionToken(authState.connectionId)
 
       if (!token) {
         $connectionState.set('auth-required')
@@ -147,7 +152,14 @@ async function doConnect(): Promise<void> {
     }
 
     await gateway.connect(wsUrl)
+    // A profile change can race a ticket fetch. Never publish an old-profile
+    // socket as open after the active profile has moved on.
+    if (requestedProfile !== getActiveProfile()) {
+      gateway.close()
+      return
+    }
     reconnectAttempt = 0
+    $gatewayProfile.set(requestedProfile)
     $connectionState.set('open')
   } catch (error) {
     if (!wantOpen) {
@@ -172,6 +184,7 @@ function handleStateChange(state: ConnectionState): void {
     reconnectAttempt = 0
     $connectionState.set('open')
   } else if (state === 'closed' || state === 'error') {
+    $gatewayProfile.set(null)
     if (wantOpen) {
       $connectionState.set('reconnecting')
       scheduleReconnect()
@@ -197,6 +210,7 @@ function scheduleReconnect(): void {
 
 export function disconnectGateway(): void {
   wantOpen = false
+  $gatewayProfile.set(null)
 
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
@@ -216,11 +230,13 @@ export async function reconnectGateway(): Promise<void> {
   }
 
   gateway?.close()
+  $gatewayProfile.set(null)
   await doConnect()
 }
 
 export function switchProfile(profile: string): void {
   setActiveProfile(profile)
+  $gatewayProfile.set(null)
   reconnectAttempt = 0
 
   if (reconnectTimer) {

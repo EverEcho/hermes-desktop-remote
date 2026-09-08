@@ -6,10 +6,16 @@ import * as api from '@/gateway/api'
 import {
   $activeRuntimeId,
   $activeSessionId,
+  $currentCwd,
   $currentFast,
   $currentModel,
   $currentProvider,
   $currentReasoningEffort,
+  $queuedPrompts,
+  drainQueuedPromptsNow,
+  enqueuePrompt,
+  redirectMessage,
+  removeQueuedPrompt,
   sendMessage,
   sendSlashCommand
 } from '@/sessions/store'
@@ -91,6 +97,15 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+function readBlobAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
 interface SpeechRecognitionLike {
   continuous: boolean
   interimResults: boolean
@@ -115,10 +130,14 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   const [isDictating, setIsDictating] = useState(false)
   const [dictationHint, setDictationHint] = useState<string | null>(null)
   const [slashItems, setSlashItems] = useState<api.SlashCompletionItem[]>([])
+  const [pathItems, setPathItems] = useState<api.PathCompletionItem[]>([])
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recordingStreamRef = useRef<MediaStream | null>(null)
 
   const currentModelStore = useStore($currentModel)
   const currentProviderStore = useStore($currentProvider)
@@ -126,6 +145,8 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   const currentFast = useStore($currentFast)
   const connectionState = useStore($connectionState)
   const activeSessionId = useStore($activeSessionId)
+  const currentCwd = useStore($currentCwd)
+  const queuedPrompts = useStore($queuedPrompts)[activeSessionId ?? ''] ?? []
   const connected = connectionState === 'open'
 
   /* Per-session draft restore (Desktop use-composer-draft.ts parity). */
@@ -193,6 +214,30 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     }
   }, [text, connected, busy])
 
+  /* `@` references use the Gateway's path index. This works identically in
+   * browser, mobile and desktop because we never read a client-local path. */
+  useEffect(() => {
+    const match = text.match(/(?:^|\s)@([^\s]*)$/)
+    const query = match?.[1]
+
+    if (!connected || query === undefined || query.length > 240) {
+      setPathItems([])
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      api.completePath(`@${query}`, { cwd: currentCwd || undefined, sessionId: activeSessionId ?? undefined })
+        .then(result => { if (!cancelled) setPathItems(result.items ?? []) })
+        .catch(() => { if (!cancelled) setPathItems([]) })
+    }, 150)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [text, connected, activeSessionId, currentCwd])
+
   const activeModel = currentModelStore
   const activeProvider = currentProviderStore
 
@@ -229,11 +274,23 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
   /* Gateway prompt.submit requires text; attachments are supplemental. */
   const canSend = text.trim().length > 0 && !busy && connected
+  const canSteer = text.trim().length > 0 && busy && connected && attachments.length === 0
+  const canQueue = text.trim().length > 0 && busy && connected
 
   const handleSend = () => {
-    if (!canSend) return
+    if (!canSend && !canSteer) return
 
     const trimmed = text.trim()
+
+    if (canSteer) {
+      void redirectMessage(trimmed).then(accepted => {
+        if (accepted) {
+          setText('')
+          if (textareaRef.current) textareaRef.current.style.height = 'auto'
+        }
+      })
+      return
+    }
 
     if (activeSessionId) {
       setDraft(activeSessionId, '')
@@ -265,10 +322,25 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     }
   }
 
+  const handleQueue = () => {
+    if (!canQueue) return
+    const accepted = enqueuePrompt(text.trim(), {
+      attachments: attachments.map(att => ({ data_url: att.dataUrl, filename: att.name })),
+      model: activeModel || undefined,
+      provider: activeProvider || undefined,
+      reasoningEffort: reasoningSupported ? reasoningEffort : undefined
+    })
+    if (!accepted) return
+    setText('')
+    setAttachments([])
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      if (busy && !canSteer && canQueue) handleQueue()
+      else handleSend()
     }
   }
 
@@ -279,13 +351,24 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || !files.length) return
+  const choosePathReference = (item: api.PathCompletionItem) => {
+    const match = text.match(/(?:^|\s)@([^\s]*)$/)
+    if (!match) return
 
-    const selected = Array.from(files)
-    e.target.value = ''
+    const isFolder = item.text.startsWith('@folder:')
+    const prefixLength = isFolder ? '@folder:'.length : item.text.startsWith('@file:') ? '@file:'.length : 1
+    const value = item.text.slice(prefixLength)
+    // A folder selection descends and keeps the popover open. Any other
+    // result is an executable Gateway reference and is inserted verbatim.
+    const replacement = isFolder ? `@${value.replace(/\/$/, '')}/` : item.text
+    const leadingSpace = match[0].startsWith(' ') ? ' ' : ''
+    setText(current => current.slice(0, current.length - match[0].length) + leadingSpace + replacement)
+    setPathItems([])
+    window.setTimeout(() => textareaRef.current?.focus(), 0)
+  }
 
+  const addAttachments = async (selected: File[]) => {
+    if (!selected.length) return
     const loaded = await Promise.all(
       selected.map(async (file, i) => ({
         id: `att-${Date.now()}-${i}`,
@@ -294,6 +377,19 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
       }))
     )
     setAttachments(prev => [...prev, ...loaded])
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    void addAttachments(selected)
+  }
+
+  const handleAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDraggingFiles(false)
+    if (!connected) return
+    void addAttachments(Array.from(event.dataTransfer.files))
   }
 
   const toggleFast = () => {
@@ -312,18 +408,60 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     }
   }
 
+  const stopGatewayDictation = () => {
+    const recorder = recorderRef.current
+    if (recorder?.state === 'recording') recorder.stop()
+  }
+
+  const startGatewayDictation = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setDictationHint(t.composer.dictationUnsupported)
+      window.setTimeout(() => setDictationHint(null), 2600)
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const chunks: BlobPart[] = []
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
+      recordingStreamRef.current = stream
+      recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data) }
+      recorder.onstop = () => {
+        recorderRef.current = null
+        recordingStreamRef.current?.getTracks().forEach(track => track.stop())
+        recordingStreamRef.current = null
+        setIsDictating(false)
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        setDictationHint('正在通过网关转写…')
+        void readBlobAsDataUrl(blob).then(dataUrl => api.transcribeAudio(dataUrl)).then(result => {
+          if (!result.transcript.trim()) throw new Error('No speech detected')
+          setText(current => current ? `${current} ${result.transcript}` : result.transcript)
+          setDictationHint(null)
+        }).catch(() => {
+          setDictationHint('网关无法转写此录音。')
+          window.setTimeout(() => setDictationHint(null), 2600)
+        })
+      }
+      recorder.start()
+      setIsDictating(true)
+      setDictationHint('正在录音，点击麦克风完成。')
+    } catch {
+      setDictationHint('无法访问麦克风。')
+      window.setTimeout(() => setDictationHint(null), 2600)
+    }
+  }
+
   const toggleDictation = () => {
     if (isDictating) {
-      recognitionRef.current?.stop()
-      setIsDictating(false)
+      if (recognitionRef.current) recognitionRef.current.stop()
+      else stopGatewayDictation()
       return
     }
 
     const win = window as unknown as Record<string, unknown>
     const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition
     if (!SpeechRecognition) {
-      setDictationHint(t.composer.dictationUnsupported)
-      window.setTimeout(() => setDictationHint(null), 2600)
+      void startGatewayDictation()
       return
     }
 
@@ -352,6 +490,12 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     recognition.start()
     setIsDictating(true)
   }
+
+  useEffect(() => () => {
+    recognitionRef.current?.stop()
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+    recordingStreamRef.current?.getTracks().forEach(track => track.stop())
+  }, [])
 
   const selectModel = (provider: ModelOptionProvider, model: string) => {
     $currentModel.set(model)
@@ -383,6 +527,15 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
       {dictationHint && (
         <div className="mb-2 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) px-3 py-1.5 text-xs text-(--ui-text-secondary)">
           {dictationHint}
+        </div>
+      )}
+
+      {queuedPrompts.length > 0 && (
+        <div className="mb-2 rounded-lg border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) px-2.5 py-1.5">
+          <div className="mb-1 flex items-center gap-1 text-[0.65rem] font-medium text-(--ui-text-tertiary)"><Codicon name="layers" className="text-xs" />{t.composer.queued(queuedPrompts.length)}{!busy ? <button className="ml-auto text-(--ui-accent) hover:opacity-70" onClick={drainQueuedPromptsNow}>{t.composer.sendNext}</button> : null}</div>
+          <div className="space-y-1">
+            {queuedPrompts.map(entry => <div className="flex items-center gap-2 text-[0.68rem] text-(--ui-text-secondary)" key={entry.id}><span className="min-w-0 flex-1 truncate">{entry.text}</span>{entry.attachments.length ? <Codicon name="attach" className="text-xs text-(--ui-text-quaternary)" /> : null}<button className="text-(--ui-text-quaternary) hover:text-(--ui-red)" onClick={() => { if (activeSessionId) removeQueuedPrompt(activeSessionId, entry.id) }} title={t.composer.removeQueued}><Codicon name="close" className="text-xs" /></button></div>)}
+          </div>
         </div>
       )}
 
@@ -434,8 +587,46 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
         </div>
       )}
 
+      {pathItems.length > 0 && (
+        <div className="absolute bottom-full left-3 right-3 mb-1 max-h-[40vh] overflow-y-auto no-scrollbar rounded-xl border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) shadow-(--shadow-nous) p-1.5 z-50">
+          <div className="px-2.5 py-1 text-[0.625rem] font-medium uppercase tracking-wide text-(--ui-text-quaternary)">Remote workspace</div>
+          {pathItems.map((item, index) => {
+            const folder = item.text.startsWith('@folder:')
+            const label = item.display || item.text.replace(/^@(file|folder):/, '')
+
+            return (
+              <button
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-(--chrome-action-hover) active:bg-(--chrome-action-hover)"
+                key={`${item.text}-${index}`}
+                onClick={() => choosePathReference(item)}
+                type="button"
+              >
+                <Codicon className="shrink-0 text-xs text-(--ui-accent)" name={folder ? 'folder' : 'file'} />
+                <span className="min-w-0 flex-1 truncate font-mono text-[0.7rem] text-(--ui-text-primary)">{label}</span>
+                <span className="shrink-0 text-[0.625rem] text-(--ui-text-quaternary)">{item.meta || (folder ? 'folder' : 'file')}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* Main Single-Row Composer Card — Desktop input chrome */}
-      <div className="desktop-input-chrome flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5">
+      <div
+        className={cn(
+          'desktop-input-chrome flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition-colors',
+          isDraggingFiles && 'border-(--ui-accent) bg-(--ui-row-active-background)'
+        )}
+        onDragEnter={event => {
+          if (event.dataTransfer.types.includes('Files')) setIsDraggingFiles(true)
+        }}
+        onDragLeave={event => {
+          if (event.currentTarget === event.target) setIsDraggingFiles(false)
+        }}
+        onDragOver={event => {
+          if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+        }}
+        onDrop={handleAttachmentDrop}
+      >
         {/* Hidden File Input */}
         <input
           ref={fileInputRef}
@@ -626,14 +817,20 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
 
         {/* 5. Circular Primary Button (Send / Stop) — matches Desktop */}
         {busy ? (
-          <button
-            type="button"
-            onClick={onStop}
-            className="size-7 rounded-full bg-(--ui-text-primary) text-(--ui-bg-card) grid place-items-center shrink-0 hover:opacity-90 active:scale-95 transition-all"
-            title={t.composer.stop}
-          >
-            <span className="size-2.5 rounded-xs bg-current" />
-          </button>
+          canSteer ? (
+            <>
+              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) shrink-0" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
+              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-accent) shrink-0" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
+              <button type="button" onClick={handleSend} className="grid size-7 place-items-center rounded-full bg-(--ui-accent) text-white shrink-0" title={t.composer.steer}><Codicon name="arrow-up" className="text-sm" /></button>
+            </>
+          ) : canQueue ? (
+            <>
+              <button type="button" onClick={onStop} className="grid size-7 place-items-center rounded-full border border-(--ui-stroke-tertiary) text-(--ui-text-tertiary) hover:text-(--ui-red) shrink-0" title={t.composer.stop}><Codicon name="debug-stop" className="text-xs" /></button>
+              <button type="button" onClick={handleQueue} className="grid size-7 place-items-center rounded-full bg-(--ui-accent) text-white shrink-0" title={t.composer.queue}><Codicon name="layers" className="text-xs" /></button>
+            </>
+          ) : (
+            <button type="button" onClick={onStop} className="size-7 rounded-full bg-(--ui-text-primary) text-(--ui-bg-card) grid place-items-center shrink-0 hover:opacity-90 active:scale-95 transition-all" title={t.composer.stop}><span className="size-2.5 rounded-xs bg-current" /></button>
+          )
         ) : (
           <button
             type="button"

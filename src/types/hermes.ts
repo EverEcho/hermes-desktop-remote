@@ -9,8 +9,55 @@ export interface StatusResponse {
   config_version?: number
 }
 
+export interface WebhookRoute {
+  created_at: string | null
+  deliver: string
+  deliver_only: boolean
+  description: string
+  enabled: boolean
+  events: string[]
+  name: string
+  prompt: string
+  secret_set: boolean
+  skills: string[]
+  url: string
+}
+
+export interface WebhooksResponse {
+  base_url: string
+  enabled: boolean
+  subscriptions: WebhookRoute[]
+}
+
+export interface WebhookCreatePayload {
+  deliver?: string
+  deliver_chat_id?: string
+  deliver_only?: boolean
+  description?: string
+  events?: string[]
+  name: string
+  prompt?: string
+  skills?: string[]
+}
+
+export interface WebhookCreateResponse extends WebhookRoute {
+  secret: string
+}
+
+export interface WebhookEnableResponse {
+  enabled: true
+  needs_restart: boolean
+  ok: boolean
+  platform: 'webhook'
+  restart_action?: string
+  restart_error?: string
+  restart_pid?: number | null
+}
+
 export interface SessionInfo {
   archived?: boolean
+  /** ISO timestamps supplied by some cron-run API versions. */
+  created_at?: null | string
   cwd?: null | string
   git_branch?: null | string
   git_repo_root?: null | string
@@ -34,6 +81,8 @@ export interface SessionInfo {
   started_at: number
   title: null | string
   tool_call_count: number
+  /** ISO timestamps supplied by some cron-run API versions. */
+  updated_at?: null | string
   handoff_platform?: null | string
   handoff_state?: null | string
   handoff_error?: null | string
@@ -191,13 +240,63 @@ export interface ModelOptionsResponse {
 }
 
 export interface ProfileInfo {
+  display_name?: string
+  has_env?: boolean
   is_default: boolean
+  model?: string | null
   name: string
   path?: string
+  provider?: string | null
+  skill_count?: number
+}
+
+export interface ProfileSoul {
+  content: string
+  exists?: boolean
+}
+
+/** Optional desktop preferences bundled into a Gateway-side profile archive. */
+export interface ProfileDesktopOverlay {
+  version?: number
+  [key: string]: unknown
+}
+
+/** Result returned when the Gateway starts a maintenance action. */
+export interface GatewayActionResponse {
+  name?: string
+  pid?: number
+  ok?: boolean
+  message?: string
+  action?: string
+  status?: string
+}
+
+export interface GatewayActionStatus {
+  exit_code: number | null
+  lines: string[]
+  name: string
+  pid: number | null
+  running: boolean
+}
+
+export interface DebugShareResponse extends GatewayActionResponse {
+  url?: string
 }
 
 export interface ProfilesResponse {
   profiles: ProfileInfo[]
+}
+
+export interface ProfileCreatePayload {
+  clone_all?: boolean
+  clone_from?: string | null
+  clone_from_default?: boolean
+  name: string
+  no_skills?: boolean
+}
+
+export interface ProfileSetupCommand {
+  command: string
 }
 
 export interface HermesConfig {
@@ -226,6 +325,56 @@ export interface SkillInfo {
   enabled: boolean
   name: string
   source?: string
+}
+
+export interface SkillHubResult {
+  description: string
+  identifier: string
+  name: string
+  repo: string | null
+  source: string
+  tags: string[]
+  trust_level: string
+}
+
+export interface SkillHubSourcesResponse {
+  featured: SkillHubResult[]
+  index_available: boolean
+  installed: Record<string, { name: string | null; scan_verdict: string | null; trust_level: string | null }>
+  sources: Array<{ available?: boolean; id: string; label: string; rate_limited?: boolean; searchable?: boolean }>
+}
+
+export interface SkillHubSearchResponse {
+  installed: Record<string, { name: string | null; scan_verdict: string | null; trust_level: string | null }>
+  results: SkillHubResult[]
+  source_counts: Record<string, number>
+  timed_out: string[]
+}
+
+export interface SkillHubPreview extends SkillHubResult {
+  files: string[]
+  skill_md: string
+}
+
+export interface SkillHubScanFinding {
+  severity: string
+  category: string
+  file: string
+  line: number | null
+  description: string
+}
+
+export interface SkillHubScanResult {
+  name: string
+  identifier: string
+  source: string
+  trust_level: string
+  verdict: string
+  summary: string
+  policy: 'allow' | 'ask' | 'block'
+  policy_reason: string | null
+  findings: SkillHubScanFinding[]
+  severity_counts: Record<string, number>
 }
 
 export interface CronJob {
@@ -288,6 +437,29 @@ export interface CronDeliveryTarget {
   home_target_set: boolean
   id: string
   name: string
+}
+
+/** A Gateway-provided, parameterized template for creating a cron job. */
+export interface AutomationBlueprintField {
+  name: string
+  type: 'enum' | 'text' | 'time' | 'weekdays'
+  label: string
+  default: null | string
+  options: string[]
+  optional: boolean
+  strict?: boolean
+  help: string
+}
+
+export interface AutomationBlueprint {
+  key: string
+  title: string
+  description: string
+  category: string
+  tags: string[]
+  fields: AutomationBlueprintField[]
+  command: string
+  appUrl: string
 }
 
 export interface MessagingPlatformInfo {
@@ -395,14 +567,166 @@ export interface ConfigFieldSchema {
 }
 
 export interface StarmapGraph {
+  clusters?: Array<{ category: string; count: number }>
   edges: Array<{ source: string; target: string }>
-  nodes: Array<{ id: string; kind: string; label: string }>
+  memory?: Array<{ body: string; source: 'memory' | 'profile'; timestamp?: number | null; title: string }>
+  nodes: Array<{
+    category?: string
+    createdBy?: string | null
+    id: string
+    kind: 'memory' | 'skill' | string
+    label: string
+    memorySource?: 'memory' | 'profile'
+    pinned?: boolean
+    state?: string
+    timestamp?: number | null
+    useCount?: number
+  }>
+  stats?: Record<string, unknown>
+}
+
+export interface LearningNodeDetail {
+  content: string
+  kind: 'memory' | 'skill'
+  label: string
+  ok: boolean
+}
+
+export interface AnalyticsResponse {
+  by_model: Array<{ actual_cost?: number; estimated_cost?: number; input_tokens?: number; model: string; output_tokens?: number; provider?: string; sessions?: number }>
+  period_days: number
+  totals: {
+    total_actual_cost: number
+    total_api_calls: number | null
+    total_estimated_cost: number
+    total_input: number | null
+    total_output: number | null
+    total_reasoning: number | null
+    total_sessions: number
+  }
+}
+
+export interface LogsResponse {
+  file: string
+  lines: string[]
+}
+
+export interface ComputerUseStatus {
+  accessibility: boolean | null
+  can_grant: boolean
+  checks: Array<{ label: string; message: string; status: string }>
+  error: string | null
+  installed: boolean
+  platform: string
+  platform_supported: boolean
+  ready: boolean | null
+  screen_recording: boolean | null
+  screen_recording_capturable: boolean | null
+  version: string | null
+}
+
+export interface BackendUpdateCheckResponse {
+  behind: number | null
+  can_apply: boolean
+  commits?: Array<{ at: number; author: string; sha: string; summary: string }>
+  current_version: string
+  install_method: string
+  message: string | null
+  update_available: boolean
+  update_command: string | null
+}
+
+export interface AudioSpeakResponse {
+  data_url: string
+  mime_type: string
+  ok: boolean
+  provider?: string
 }
 
 export interface McpServerSummary {
+  args?: string[]
+  command?: string | null
   enabled: boolean
   name: string
   tools_count?: number
+  transport?: string
+  url?: string | null
+}
+
+export interface McpTestResult {
+  error?: string
+  ok: boolean
+  prompts?: number
+  resources?: number
+  tools: Array<{ description: string; name: string }>
+}
+
+export interface McpCatalogEntry {
+  name: string
+  description: string
+  source: string
+  transport: string
+  auth_type: string
+  required_env: Array<{ name: string; prompt: string; required: boolean }>
+  command: string | null
+  args: string[]
+  url: string | null
+  needs_install: boolean
+  installed: boolean
+  enabled: boolean
+}
+
+export interface McpCatalogResponse {
+  entries: McpCatalogEntry[]
+  diagnostics: Array<{ name: string; kind: string; message: string }>
+}
+
+export interface MemoryStatusResponse {
+  active: string
+  builtin_files: { memory: number; user: number }
+  providers: Array<{ configured: boolean; description: string; name: string }>
+}
+
+export type MemoryProviderFieldKind = 'bool' | 'json' | 'number' | 'secret' | 'select' | 'text'
+
+export interface MemoryProviderFieldOption { description: string; label: string; value: string }
+
+export interface MemoryProviderField {
+  description: string
+  group: string
+  info?: string
+  inline: boolean
+  is_set: boolean
+  key: string
+  kind: MemoryProviderFieldKind
+  label: string
+  options: MemoryProviderFieldOption[]
+  placeholder: string
+  value: string
+}
+
+export interface MemoryProviderConfig {
+  docs_url: string
+  fields: MemoryProviderField[]
+  label: string
+  name: string
+}
+
+export interface MemoryProviderOAuthStatus {
+  auth: 'apikey' | 'oauth' | null
+  connected: boolean
+  detail: string
+  state: 'connected' | 'error' | 'idle' | 'pending'
+}
+
+export interface CuratorStatusResponse {
+  archive_after_days: number | null
+  enabled: boolean
+  interval_hours: number | null
+  last_run_at: string | null
+  min_idle_hours: number | null
+  paused: boolean
+  stale_after_days: number | null
 }
 
 export interface ToolsetInfo {
@@ -412,6 +736,74 @@ export interface ToolsetInfo {
   label?: string
   name: string
   tools?: string[]
+}
+
+export interface ToolEnvVar {
+  key: string
+  prompt: string
+  url: string | null
+  default: string | null
+  is_set: boolean
+}
+
+export interface ToolProvider {
+  name: string
+  badge: string
+  tag: string
+  env_vars: ToolEnvVar[]
+  post_setup: string | null
+  requires_nous_auth: boolean
+  is_active: boolean
+  status?: 'ready' | 'needs_setup' | 'needs_auth' | 'needs_keys'
+  web_backend?: string
+  tts_provider?: string
+  capabilities?: Array<'search' | 'extract'>
+}
+
+export interface ToolsetConfig {
+  name: string
+  has_category: boolean
+  providers: ToolProvider[]
+  active_provider: string | null
+  active_search_backend?: string | null
+  active_extract_backend?: string | null
+}
+
+export interface ToolsetModel {
+  id: string
+  display: string
+  speed: string
+  strengths: string
+  price: string
+}
+
+export interface ToolsetModelsResponse {
+  name: string
+  has_models: boolean
+  provider?: string | null
+  plugin?: string | null
+  models: ToolsetModel[]
+  current: string | null
+  default: string | null
+}
+
+/** Health state reported by the connected Gateway for a terminal backend. */
+export type TerminalBackendStatus = 'ready' | 'needs_setup' | 'unavailable'
+
+/** One selectable remote terminal execution backend. The Gateway owns all
+ * execution; clients only select the backend and render its output. */
+export interface TerminalBackendInfo {
+  active: boolean
+  description: string
+  detail: string
+  label: string
+  name: string
+  status: TerminalBackendStatus
+}
+
+export interface TerminalBackendsResponse {
+  active: string
+  backends: TerminalBackendInfo[]
 }
 
 export interface FsListEntry {
@@ -574,6 +966,13 @@ export interface CustomEndpointUpdate {
   model: string
   models?: string[]
   name: string
+}
+
+export interface CustomEndpointValidationResponse {
+  message: string
+  models: string[]
+  ok: boolean
+  reachable: boolean
 }
 
 export interface ArtifactInfo {

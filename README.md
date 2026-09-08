@@ -69,6 +69,31 @@ same-origin Gateway proxy example.
 The Web build can also be installed as a desktop PWA. Native desktop packages
 are produced by the Tauri platform under `src-tauri/`.
 
+### Desktop and mobile Web surfaces
+
+Browser UI selection is made once at startup. A fine-pointer viewport starts
+on the Desktop surface; a touch-first viewport starts on the Mobile surface.
+It intentionally does not switch when the browser window is resized, so an
+active stream, draft, and open panels are not destroyed mid-session.
+
+For a deterministic deployment or QA link, set either query parameter:
+
+```text
+https://client.example.com/?surface=desktop
+https://client.example.com/?surface=mobile
+```
+
+The native applications always select their platform surface: Tauri is
+Desktop, and iOS/Android are Mobile.
+
+### Native OAuth callback
+
+When a Gateway requires OAuth, native apps use the provider-required loopback
+redirect shape `http://127.0.0.1:<port>/oauth/callback`. The app intercepts
+that navigation inside its dedicated sign-in WebView and validates the exact
+scheme, address, port, and path before accepting the authorization response.
+No custom mobile URL scheme is required for this flow.
+
 ## Distribution
 
 - iOS binary updates are distributed through the App Store or TestFlight.

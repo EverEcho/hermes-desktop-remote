@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import * as api from '@/gateway/api'
 import { useI18n } from '@/i18n'
 import { BottomSheet } from '@/ui/BottomSheet'
-import { useIsDesktop } from '@/ui/useMediaQuery'
+import { useAppSurface } from '@/bootstrap/surface-context'
 import { cn } from '@/ui/utils'
 
 import { SECTIONS } from './constants'
@@ -51,7 +51,7 @@ interface SettingsPageProps {
 
 export function SettingsPage({ open, onClose }: SettingsPageProps) {
   const { t } = useI18n()
-  const isDesktop = useIsDesktop()
+  const isDesktop = useAppSurface() === 'desktop'
   const [view, setView] = useState<SettingsView>('root')
   const [notice, setNotice] = useState('')
   const importInputRef = useRef<HTMLInputElement | null>(null)

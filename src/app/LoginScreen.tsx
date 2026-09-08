@@ -98,10 +98,16 @@ export function LoginScreen({ error: externalError, initialGatewayUrl = '', onCl
     }
     setSigningIn(true)
     setActionError(null)
-    await startOAuthLogin(url)
-    // Browser.open returns after presentation; completion is observed from the
-    // validated app callback above, exactly as Desktop waits for its login window.
-    setSigningIn(false)
+    try {
+      await startOAuthLogin(url)
+      // The native embedded WebView resolves only after it intercepts the
+      // exact loopback redirect. Tauri follows the same contract through its
+      // loopback listener, so a successful return is a completed sign-in.
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t.login.testFailed)
+    } finally {
+      setSigningIn(false)
+    }
   }
 
   const testConnection = async () => {
