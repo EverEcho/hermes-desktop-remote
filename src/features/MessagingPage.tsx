@@ -4,6 +4,7 @@ import * as api from '@/gateway/api'
 import { onGatewayEvent } from '@/gateway'
 import type { MessagingPlatformInfo, PairingResponse } from '@/types/hermes'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
+import { Switch } from '@/ui/Switch'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
 
@@ -181,14 +182,13 @@ function PlatformCard({ platform, onSaved }: { platform: MessagingPlatformInfo; 
           </div>
           {platform.description && <p className="mt-1 pl-4 text-(--conversation-tool-font-size) text-(--ui-text-tertiary)">{platform.description}</p>}
         </button>
-        <button
+        <Switch
           aria-label={platform.enabled ? t.messaging.disable(platform.name) : t.messaging.enable(platform.name)}
-          className={cn('relative mt-0.5 h-6 w-10 shrink-0 rounded-full transition-colors', platform.enabled ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)')}
+          checked={platform.enabled}
+          className="mt-0.5"
           disabled={saving}
-          onClick={() => void save({ enabled: !platform.enabled })}
-        >
-          <span className={cn('absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform', platform.enabled ? 'translate-x-[18px]' : 'translate-x-0.5')} />
-        </button>
+          onChange={() => void save({ enabled: !platform.enabled })}
+        />
       </div>
 
       {expanded && (

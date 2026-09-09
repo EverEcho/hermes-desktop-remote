@@ -113,6 +113,13 @@
   --dt-composer-ring: var(--ui-base);
 }
 
+/* In standard web browsers (H5), browser navigation/toolbars already bound
+ * the viewport and isolate content from device bottom insets. We reset
+ * --safe-area-bottom to 0px on standard web unless in standalone PWA or native app. */
+html[data-platform='web']:not([data-standalone='true']) {
+  --safe-area-bottom: 0px;
+}
+
 @keyframes shimmer {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
@@ -194,8 +201,28 @@
 html, body, #root {
   height: 100%;
   height: 100dvh;
+  background: var(--ui-bg-chrome);
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* WebKit's installed-web-app viewport can report `100dvh` without the bottom
+ * safe-area strip even with viewport-fit=cover. The shell then ends above the
+ * Home Indicator and the root background shows through as a blank band.
+ * In standalone mode `100vh` includes that strip; individual controls still
+ * use --safe-area-bottom to keep interactive content above the indicator. */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: 100vh;
+  }
+}
+
+html[data-standalone='true'],
+html[data-standalone='true'] body,
+html[data-standalone='true'] #root {
+  height: 100vh;
 }
 
 .tauri-titlebar {
@@ -329,13 +356,38 @@ html[data-platform='tauri'][data-desktop-os='macos'] .tauri-titlebar {
 
   html[data-surface='desktop'] .desktop-workspace-panel {
     display: flex;
-    width: 17rem;
-    min-width: 12rem;
-    max-width: 24rem;
+    width: 100%;
+    min-width: 0;
     flex: 0 0 auto;
     flex-direction: column;
-    border-left: 1px solid var(--ui-stroke-tertiary);
     background: var(--ui-bg-sidebar);
+  }
+
+  html[data-surface='desktop'] .desktop-panel-sash {
+    position: relative;
+    z-index: 30;
+    width: 5px;
+    flex: 0 0 5px;
+    cursor: col-resize;
+    outline: none;
+    touch-action: none;
+  }
+
+  html[data-surface='desktop'] .desktop-panel-sash > span {
+    position: absolute;
+    inset-block: 0;
+    left: 2px;
+    width: 1px;
+    background: var(--ui-stroke-tertiary);
+    transition: background-color 120ms ease-out, width 120ms ease-out;
+  }
+
+  html[data-surface='desktop'] .desktop-panel-sash:hover > span,
+  html[data-surface='desktop'] .desktop-panel-sash:focus-visible > span,
+  html[data-surface='desktop'] .desktop-panel-sash.is-dragging > span {
+    left: 1px;
+    width: 3px;
+    background: var(--ui-accent);
   }
 
   html[data-surface='desktop'] .desktop-workspace-header {
@@ -546,6 +598,12 @@ html[data-surface='desktop'] .desktop-file-save-error {
   }
 }
 
+html.is-resizing-panels,
+html.is-resizing-panels * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 .webhook-input {
   width: 100%;
   border: 1px solid var(--ui-stroke-tertiary);
@@ -586,6 +644,31 @@ input, textarea {
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.conversation-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-stroke-secondary) transparent;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+}
+
+.conversation-scroll::-webkit-scrollbar { width: 8px; }
+.conversation-scroll::-webkit-scrollbar-track { background: transparent; }
+.conversation-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--ui-stroke-secondary);
+  background-clip: padding-box;
+}
+
+.conversation-turn.is-virtualized {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 140px;
+}
+
+@media (hover: none) {
+  .message-hover-actions { opacity: 1; }
+}
 .font-mono, code, pre { font-family: var(--dt-font-mono); }
 
 .mobile-markdown, .mobile_markdown { overflow-wrap: anywhere; }

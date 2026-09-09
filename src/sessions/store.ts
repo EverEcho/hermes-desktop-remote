@@ -7,6 +7,7 @@ import * as api from '@/gateway/api'
 import { onGatewayEvent, restorePendingSessionInputs } from '@/gateway'
 import { translateNow } from '@/i18n'
 import { getActiveProfile } from '@/gateway/http-client'
+import { SessionViewCache, type SessionViewSnapshot } from './session-view-cache'
 
 export const $sessions = atom<SessionInfo[]>([])
 /** Source-scoped sidebar streams. They stay outside `$sessions` so a burst of
@@ -25,6 +26,7 @@ export const $messages = atom<MobileMessage[]>([])
 /** Whether the server has transcript rows older than the in-memory window. */
 export const $messagesHasEarlier = atom(false)
 export const $messagesLoadingEarlier = atom(false)
+export const $sessionLoading = atom(false)
 export const $busy = atom(false)
 export const $awaitingResponse = atom(false)
 export const $currentModel = atom('')
@@ -60,6 +62,42 @@ let activeSessionGeneration = 0
 let transcriptOffset = 0
 let drainingQueuedPrompt = false
 let queuedDrainTimer: ReturnType<typeof setTimeout> | null = null
+const sessionViewCache = new SessionViewCache()
+
+function captureActiveSessionView(): void {
+  const sessionId = $activeSessionId.get()
+  if (!sessionId) return
+  sessionViewCache.set(sessionId, {
+    awaitingResponse: $awaitingResponse.get(),
+    busy: $busy.get(),
+    cwd: $currentCwd.get(),
+    fast: $currentFast.get(),
+    hasEarlier: $messagesHasEarlier.get(),
+    messages: $messages.get(),
+    model: $currentModel.get(),
+    provider: $currentProvider.get(),
+    reasoningEffort: $currentReasoningEffort.get(),
+    runtimeId: $activeRuntimeId.get(),
+    title: $sessionTitle.get(),
+    transcriptOffset
+  })
+}
+
+function restoreSessionView(snapshot: SessionViewSnapshot): void {
+  $activeRuntimeId.set(snapshot.runtimeId)
+  $messages.set(snapshot.messages)
+  $messagesHasEarlier.set(snapshot.hasEarlier)
+  $messagesLoadingEarlier.set(false)
+  $busy.set(snapshot.busy)
+  $awaitingResponse.set(snapshot.awaitingResponse)
+  $currentModel.set(snapshot.model)
+  $currentProvider.set(snapshot.provider)
+  $currentReasoningEffort.set(snapshot.reasoningEffort)
+  $currentFast.set(snapshot.fast)
+  $currentCwd.set(snapshot.cwd)
+  $sessionTitle.set(snapshot.title)
+  transcriptOffset = snapshot.transcriptOffset
+}
 
 /** Clear profile-scoped sidebar state before a connection/profile re-home.
  * Durable sessions remain on the Gateway; this only prevents profile A rows
@@ -72,6 +110,7 @@ export function clearSessionLists(): void {
   $sessionsHasMore.set(false)
   $sessionsLoading.set(true)
   $sessionsLoadingMore.set(false)
+  sessionViewCache.clear()
 }
 
 export async function refreshSessions(): Promise<void> {
@@ -132,15 +171,25 @@ export async function loadMoreSessions(): Promise<void> {
 }
 
 export async function openSession(storedSessionId: string): Promise<void> {
+  if ($activeSessionId.get() === storedSessionId && !$sessionLoading.get()) return
+  captureActiveSessionView()
   const generation = ++activeSessionGeneration
   $activeSessionId.set(storedSessionId)
-  $messages.set([])
-  $messagesHasEarlier.set(false)
-  $messagesLoadingEarlier.set(false)
-  transcriptOffset = 0
-  $busy.set(false)
-  $awaitingResponse.set(false)
-  $sessionTitle.set($sessions.get().find(s => s.id === storedSessionId)?.title ?? null)
+  const cached = sessionViewCache.get(storedSessionId)
+  if (cached) {
+    restoreSessionView(cached)
+  } else {
+    $activeRuntimeId.set(null)
+    $messages.set([])
+    $messagesHasEarlier.set(false)
+    $messagesLoadingEarlier.set(false)
+    transcriptOffset = 0
+    $busy.set(false)
+    $awaitingResponse.set(false)
+    $currentCwd.set('')
+    $sessionTitle.set($sessions.get().find(s => s.id === storedSessionId)?.title ?? null)
+  }
+  $sessionLoading.set(true)
   // The backend owns unread state. Marking the active conversation read is
   // best-effort so older gateways remain compatible and the opening path is
   // never blocked on a cosmetic watermark write.
@@ -166,6 +215,7 @@ export async function openSession(storedSessionId: string): Promise<void> {
     if (resumeResult.info) {
       $currentModel.set(resumeResult.info.model ?? '')
       $currentProvider.set(resumeResult.info.provider ?? '')
+      $currentReasoningEffort.set(resumeResult.info.reasoning_effort ?? 'medium')
       $currentCwd.set(resumeResult.info.cwd ?? '')
       $currentFast.set(resumeResult.info.fast ?? false)
       $busy.set(resumeResult.info.running ?? false)
@@ -175,6 +225,8 @@ export async function openSession(storedSessionId: string): Promise<void> {
 
     if (resumeResult.messages?.length && !resumeResult.messages_omitted) {
       restored = convertMessages(resumeResult.messages)
+      transcriptOffset = resumeResult.messages.length
+      $messagesHasEarlier.set((resumeResult.message_count ?? resumeResult.messages.length) > resumeResult.messages.length)
     } else {
       const transcript = await api.getSessionMessages(storedSessionId, {
         limit: 120,
@@ -191,6 +243,7 @@ export async function openSession(storedSessionId: string): Promise<void> {
     }
 
     $messages.set(appendInflightProjection(restored, resumeResult))
+    captureActiveSessionView()
     if (!resumeResult.info?.running) scheduleQueuedPromptDrain()
   } catch (_error) {
     if (generation !== activeSessionGeneration) {
@@ -207,10 +260,13 @@ export async function openSession(storedSessionId: string): Promise<void> {
       if (generation === activeSessionGeneration) {
         $messages.set(convertMessages(transcript.messages))
         updateTranscriptWindow(transcript)
+        captureActiveSessionView()
       }
     } catch {
       // session may not exist yet
     }
+  } finally {
+    if (generation === activeSessionGeneration) $sessionLoading.set(false)
   }
 }
 
@@ -230,6 +286,7 @@ export async function branchStoredSession(storedSessionId: string): Promise<stri
 }
 
 export function closeSession(): void {
+  captureActiveSessionView()
   activeSessionGeneration++
   eventCleanup?.()
   eventCleanup = null
@@ -238,6 +295,7 @@ export function closeSession(): void {
   $messages.set([])
   $messagesHasEarlier.set(false)
   $messagesLoadingEarlier.set(false)
+  $sessionLoading.set(false)
   transcriptOffset = 0
   $busy.set(false)
   $awaitingResponse.set(false)
@@ -737,6 +795,7 @@ export async function stopGeneration(): Promise<void> {
 
 export async function createNewSession(cwd?: string): Promise<string | null> {
   try {
+    captureActiveSessionView()
     const result = await api.createSession({
       cwd,
       model: $currentModel.get() || undefined,
@@ -750,8 +809,15 @@ export async function createNewSession(cwd?: string): Promise<string | null> {
     $messages.set([])
     $messagesHasEarlier.set(false)
     $messagesLoadingEarlier.set(false)
+    $sessionLoading.set(false)
     transcriptOffset = 0
     $busy.set(false)
+    $awaitingResponse.set(false)
+    $currentCwd.set(result.info?.cwd ?? cwd ?? '')
+    if (result.info?.model) $currentModel.set(result.info.model)
+    if (result.info?.provider) $currentProvider.set(result.info.provider)
+    if (result.info?.reasoning_effort) $currentReasoningEffort.set(result.info.reasoning_effort)
+    if (typeof result.info?.fast === 'boolean') $currentFast.set(result.info.fast)
     $sessionTitle.set(null)
 
     const generation = ++activeSessionGeneration

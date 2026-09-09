@@ -257,7 +257,7 @@ export function Sidebar(props: SidebarProps) {
   const [activeTab, setActiveTab] = useState<'sessions' | 'bots'>('sessions')
 
   return (
-    <div className={cn('flex h-full flex-col bg-(--ui-bg-sidebar)', props.inDrawer ? 'w-full' : 'w-[13.25rem] shrink-0 border-r border-(--ui-stroke-tertiary)')}>
+    <div className={cn('flex h-full w-full flex-col bg-(--ui-bg-sidebar)', !props.inDrawer && 'shrink-0')}>
       {/* 顶部 SESSIONS | BOTS 切换 Tab（桌面端对齐原版 PC） */}
       {!props.inDrawer && (
         <div className="flex items-center border-b border-(--ui-stroke-quaternary) px-2.5 pt-2 pb-1.5 shrink-0 select-none gap-1">

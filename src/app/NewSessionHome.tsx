@@ -521,7 +521,7 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
   // 极简模式渲染
   if (layoutMode === 'minimal') {
     return (
-      <div className="relative flex h-full min-h-0 flex-col items-center justify-between overflow-y-auto px-4 py-8 pb-[calc(5rem+var(--safe-area-bottom))] overscroll-contain">
+      <div className="relative flex h-full min-h-0 flex-col items-center justify-between overflow-y-auto px-4 py-6 pb-[calc(1.5rem+var(--safe-area-bottom))] overscroll-contain">
         <div className="flex w-full max-w-3xl items-center justify-between">
           <span className="text-[11px] font-mono uppercase tracking-widest text-(--ui-text-quaternary)">
             HERMES DESKTOP
@@ -560,7 +560,7 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
           </div>
         </div>
 
-        <div className="h-16 shrink-0" />
+        <div className="h-2 shrink-0" />
       </div>
     )
   }
@@ -568,7 +568,7 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
   // 双栏工作台模式渲染
   if (layoutMode === 'split') {
     return (
-      <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-4 py-6 md:px-8 pb-[calc(5rem+var(--safe-area-bottom))] overscroll-contain">
+      <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-4 py-6 md:px-8 pb-[calc(1.5rem+var(--safe-area-bottom))] overscroll-contain">
         <div className="mb-6 flex items-center justify-between border-b border-(--ui-stroke-quaternary) pb-4">
           <div className="flex items-center gap-3">
             <div className="text-xl font-bold tracking-tight text-(--ui-accent)">HERMES AGENT</div>
@@ -611,7 +611,7 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
 
   // 默认：仪表盘全景模式 (Dashboard)
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-4 py-6 md:px-8 pb-[calc(6rem+var(--safe-area-bottom))] overscroll-contain">
+    <div className="relative flex h-full min-h-0 flex-col overflow-y-auto px-4 pt-4 pb-0 md:px-8 md:pt-6 overscroll-contain">
       {/* 顶部标题与布局切换 */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -630,7 +630,7 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
       </div>
 
       {/* PC 底部的状态卡片与图表 */}
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-[calc(5rem+var(--safe-area-bottom))]">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-[calc(1.5rem+var(--safe-area-bottom))]">
         {/* 系统健康与指标卡片 */}
         <HomeStatusCards
           onSelectPrompt={handleSelectPrompt}
@@ -648,4 +648,5 @@ export function NewSessionHome({ onSelectSession }: NewSessionHomeProps) {
     </div>
   )
 }
+
 

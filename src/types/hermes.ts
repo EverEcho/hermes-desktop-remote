@@ -818,11 +818,29 @@ export interface FsListResponse {
   path: string
 }
 
+export interface GitStatusFile {
+  path: string
+  staged: boolean
+  unstaged: boolean
+  untracked: boolean
+  conflicted: boolean
+}
+
+/** Mirrors HermesRepoStatus from the original desktop client. */
 export interface GitStatusResponse {
-  branch: string
-  modified: string[]
-  staged: string[]
-  untracked: string[]
+  branch: string | null
+  defaultBranch: string | null
+  detached: boolean
+  ahead: number
+  behind: number
+  staged: number
+  unstaged: number
+  untracked: number
+  conflicted: number
+  changed: number
+  added: number
+  removed: number
+  files: GitStatusFile[]
 }
 
 export interface GitFileDiffResponse {

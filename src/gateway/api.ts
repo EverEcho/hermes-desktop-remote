@@ -1104,10 +1104,10 @@ export function fsWriteText(filePath: string, content: string): Promise<{ ok: bo
   })
 }
 
-export function gitStatus(repoPath?: string): Promise<GitStatusResponse> {
+export function gitStatus(repoPath?: string): Promise<GitStatusResponse | null> {
   const suffix = repoPath ? `?path=${encodeURIComponent(repoPath)}` : ''
 
-  return apiRequest<GitStatusResponse>(`/api/git/status${suffix}`)
+  return apiRequest<GitStatusResponse | null>(`/api/git/status${suffix}`)
 }
 
 export function getGhAuthStatus(refresh = false): Promise<{ available: boolean; authenticated: boolean }> {

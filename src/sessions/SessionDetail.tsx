@@ -7,6 +7,7 @@ import {
   $awaitingResponse,
   $messagesHasEarlier,
   $messagesLoadingEarlier,
+  $sessionLoading,
   editAndResend,
   loadEarlierMessages,
   retryMessage,
@@ -28,32 +29,64 @@ interface SessionDetailProps {
   onPreview?: (target: { kind: 'file' | 'url'; value: string }) => void
 }
 
-export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetailProps) {
+interface SessionScrollPosition {
+  atBottom: boolean
+  top: number
+}
+
+const sessionScrollPositions = new Map<string, SessionScrollPosition>()
+const BOTTOM_THRESHOLD_PX = 80
+
+export function SessionDetail({ sessionId, onPreview }: SessionDetailProps) {
   const { t } = useI18n()
   const messages = useStore($messages)
   const busy = useStore($busy)
   const awaitingResponse = useStore($awaitingResponse)
   const hasEarlier = useStore($messagesHasEarlier)
   const loadingEarlier = useStore($messagesLoadingEarlier)
+  const sessionLoading = useStore($sessionLoading)
   const scrollRef = useRef<HTMLDivElement>(null)
   const userScrolledUp = useRef(false)
+  const pendingScrollRestore = useRef<SessionScrollPosition | null>(null)
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false)
   const [editingMessage, setEditingMessage] = useState<MobileMessage | null>(null)
 
   useEffect(() => {
-    if (!userScrolledUp.current && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
+    pendingScrollRestore.current = sessionScrollPositions.get(sessionId) ?? { atBottom: true, top: 0 }
+    userScrolledUp.current = !pendingScrollRestore.current.atBottom
+    setShowScrollToLatest(!pendingScrollRestore.current.atBottom)
+  }, [sessionId])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el || messages.length === 0) return
+    const restore = pendingScrollRestore.current
+
+    const frame = requestAnimationFrame(() => {
+      if (restore) {
+        el.scrollTop = restore.atBottom ? el.scrollHeight : Math.min(restore.top, el.scrollHeight - el.clientHeight)
+        pendingScrollRestore.current = null
+      } else if (!userScrolledUp.current) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [messages, sessionId])
 
   const handleScroll = () => {
     const el = scrollRef.current
     if (!el) return
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD_PX
     userScrolledUp.current = !atBottom
+    setShowScrollToLatest(!atBottom)
+    sessionScrollPositions.set(sessionId, { atBottom, top: el.scrollTop })
   }
 
   const scrollToBottom = () => {
     userScrolledUp.current = false
+    setShowScrollToLatest(false)
+    sessionScrollPositions.set(sessionId, { atBottom: true, top: 0 })
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }
 
@@ -61,12 +94,18 @@ export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetai
     .flatMap(m => m.parts ?? [])
     .filter((p): p is Extract<MobileMessagePart, { type: 'tool-call' }> => p.type === 'tool-call' && p.status === 'running')
     .pop()
+  const messageGroups = groupMessagesByTurn(messages)
 
   return (
     <div className="h-full flex flex-col relative bg-(--ui-bg-chrome)">
+      {sessionLoading && messages.length > 0 ? (
+        <div className="absolute inset-x-0 top-0 z-30 h-0.5 overflow-hidden bg-(--ui-stroke-quaternary)" role="progressbar" aria-label={t.session.loadingConversation}>
+          <div className="h-full w-1/3 animate-pulse rounded-full bg-(--ui-accent)" />
+        </div>
+      ) : null}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto no-scrollbar px-3 md:px-6 py-4 space-y-5 max-w-4xl mx-auto w-full"
+        className="conversation-scroll flex-1 overflow-y-auto px-3 md:px-6 py-4 space-y-5 max-w-4xl mx-auto w-full"
         onScroll={handleScroll}
       >
         {hasEarlier && (
@@ -85,15 +124,27 @@ export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetai
             {loadingEarlier ? t.common.loading : t.session.loadEarlier}
           </button>
         )}
-        {messages.length === 0 && !busy && (
+        {messages.length === 0 && sessionLoading && (
+          <div className="flex h-full flex-col items-center justify-center gap-2 py-20 text-center" role="status">
+            <Codicon name="loading" className="animate-spin text-lg text-(--ui-accent)" />
+            <p className="text-xs text-(--ui-text-tertiary)">{t.session.loadingConversation}</p>
+          </div>
+        )}
+        {messages.length === 0 && !busy && !sessionLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center py-20">
             <Codicon name="robot" className="text-3xl text-(--ui-text-quaternary) mb-2" />
             <p className="text-xs text-(--ui-text-tertiary)">{t.session.emptyHint}</p>
           </div>
         )}
 
-        {groupMessagesByTurn(messages).map(group => (
-          <div key={group[0].id} className="flex min-w-0 flex-col gap-1.5 pb-2">
+        {messageGroups.map((group, index) => (
+          <div
+            key={group[0].id}
+            className={cn(
+              'conversation-turn flex min-w-0 flex-col gap-1.5 pb-2',
+              index < messageGroups.length - 3 && 'is-virtualized'
+            )}
+          >
             {group.map(msg => (
               <MessageRow
                 key={msg.id}
@@ -137,11 +188,12 @@ export function SessionDetail({ sessionId: _sessionId, onPreview }: SessionDetai
         <div className="h-4" />
       </div>
 
-      {userScrolledUp.current && (
+      {showScrollToLatest && (
         <button
-          className="absolute bottom-20 right-4 size-8 rounded-full border border-(--ui-stroke-tertiary) shadow-(--shadow-nous) bg-(--ui-bg-elevated) grid place-items-center text-(--ui-text-secondary) z-10 active:scale-95 transition-transform"
+          className="absolute bottom-32 right-4 size-9 rounded-full border border-(--ui-stroke-secondary) shadow-(--shadow-nous) bg-(--ui-bg-elevated) grid place-items-center text-(--ui-text-secondary) z-30 hover:text-(--ui-text-primary) active:scale-95 transition-all"
           onClick={scrollToBottom}
-          aria-label="Scroll to latest"
+          aria-label={t.session.scrollToLatest}
+          title={t.session.scrollToLatest}
         >
           <Codicon name="chevron-down" className="text-sm" />
         </button>
@@ -333,7 +385,7 @@ function UserMessageRow({
         )}
 
         {/* Discreet hover action toolbar in top-right corner */}
-        <div className="absolute right-2 top-2 z-10 flex items-center gap-0.5 opacity-0 group-hover/user-msg:opacity-100 transition-opacity bg-(--dt-user-bubble)/90 backdrop-blur-xs rounded-md p-0.5 border border-(--ui-stroke-quaternary)/50 shadow-xs">
+        <div className="message-hover-actions absolute right-2 top-2 z-10 flex items-center gap-0.5 opacity-0 group-hover/user-msg:opacity-100 group-focus-within/user-msg:opacity-100 transition-opacity bg-(--dt-user-bubble)/90 backdrop-blur-xs rounded-md p-0.5 border border-(--ui-stroke-quaternary)/50 shadow-xs">
           <button
             type="button"
             onClick={handleCopy}
@@ -406,7 +458,7 @@ function AssistantActionBar({
   }
 
   return (
-    <div className="flex items-center justify-end gap-1 pt-1 opacity-0 group-hover/assistant:opacity-100 transition-opacity select-none">
+    <div className="message-hover-actions flex items-center justify-end gap-1 pt-1 opacity-0 group-hover/assistant:opacity-100 group-focus-within/assistant:opacity-100 transition-opacity select-none">
       <button
         type="button"
         onClick={handleCopy}

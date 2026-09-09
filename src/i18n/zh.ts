@@ -33,6 +33,14 @@ export const zh: Catalog = {
     showFileList: '显示文件列表',
     hideFileList: '隐藏文件列表',
     openWorkspace: '打开工作区',
+    resizeLeftSidebar: '调整左侧栏宽度',
+    resizeRightSidebar: '调整右侧栏宽度',
+    tabWorking: '工作中',
+    tabNeedsInput: '等待输入',
+    tabUnread: '未读',
+    closeTab: (title: string) => `关闭 ${title}`,
+    closeOtherTabs: '关闭其他标签',
+    closeAllTabs: '关闭全部标签',
     gatewayConnected: '网关已连接',
     reconnectGateway: '重新连接网关',
     refreshFiles: '刷新文件列表',
@@ -215,8 +223,10 @@ export const zh: Catalog = {
   },
   session: {
     emptyHint: '从一个目标开始',
+    loadingConversation: '正在加载会话…',
     thinking: '思考中…',
     loadEarlier: '显示更早的消息',
+    scrollToLatest: '滚动到最新消息',
     retrySend: '重试发送',
     editMessage: '编辑消息',
     saveAndSend: '保存并重新发送',
@@ -790,6 +800,46 @@ export const zh: Catalog = {
       file: '文件',
       image: '图片',
       link: '链接'
+    }
+  },
+  webhooks: {
+    title: 'Webhooks',
+    description: '在连接的网关上创建经过身份验证的入站事件路由。',
+    enableReceiver: '启用 Webhook 接收器',
+    receiverRestartNotice: 'Webhook 接收器已启用。网关可能需要重启后才能接收事件。',
+    secretNotice: '请立即复制此密钥；它将不会再次显示。',
+    done: '完成',
+    newSubscription: '新建订阅',
+    namePlaceholder: '名称',
+    descriptionPlaceholder: '描述（可选）',
+    eventsPlaceholder: '事件，逗号分隔（可选）',
+    skillsPlaceholder: '技能，逗号分隔（可选）',
+    promptPlaceholder: '提示词（可选）',
+    deliverOnly: '仅投递',
+    createWebhook: '创建 Webhook',
+    subscriptions: '订阅列表',
+    refresh: '刷新',
+    loading: '正在加载 Webhook…',
+    noSubscriptions: '暂无订阅',
+    disable: '停用',
+    enable: '启用',
+    delete: '删除',
+    deleteConfirm: (name: string) => `确定要删除 Webhook “${name}” 吗？`,
+    allEvents: '所有事件',
+    deliveryLabels: {
+      log: '日志 (log)',
+      telegram: 'Telegram',
+      discord: 'Discord',
+      slack: 'Slack',
+      email: '邮件 (email)',
+      github_comment: 'GitHub 评论'
+    },
+    errors: {
+      loadFailed: '无法加载 Webhook 列表',
+      enableFailed: '启用 Webhook 失败',
+      createFailed: '创建 Webhook 失败',
+      updateFailed: '更新 Webhook 失败',
+      deleteFailed: '删除 Webhook 失败'
     }
   }
 } satisfies Catalog

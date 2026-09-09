@@ -1,8 +1,10 @@
 import { useStore } from '@nanostores/react'
 import type { SessionInfo } from '@/types/hermes'
-import { $sessionTitle } from '@/sessions/store'
+import { $sessionLoading, $sessionTitle } from '@/sessions/store'
+import { $sessionStates } from '@/sessions/session-states'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
+import { useI18n } from '@/i18n'
 
 interface DesktopSessionTabsProps {
   activeSessionId: string | null
@@ -14,8 +16,8 @@ interface DesktopSessionTabsProps {
   tabIds: string[]
 }
 
-/** A lightweight desktop tab strip. Tabs are navigation history, not local
- * runtimes: selecting one still resumes it through the remote Gateway. */
+/** Desktop tab history backed by hot per-session view snapshots. Selecting a
+ * tab restores immediately, then resumes it through the Gateway for truth. */
 export function DesktopSessionTabs({
   activeSessionId,
   onClose,
@@ -25,7 +27,10 @@ export function DesktopSessionTabs({
   sessions,
   tabIds
 }: DesktopSessionTabsProps) {
+  const { t } = useI18n()
   const currentTitle = useStore($sessionTitle)
+  const sessionLoading = useStore($sessionLoading)
+  const sessionStates = useStore($sessionStates)
   if (!tabIds.length) return null
   const byId = new Map(sessions.map(session => [session._lineage_root_id ?? session.id, session]))
 
@@ -34,6 +39,7 @@ export function DesktopSessionTabs({
       {tabIds.map(id => {
         const session = byId.get(id)
         const active = id === activeSessionId
+        const liveState = sessionStates.get(id) ?? (session ? sessionStates.get(session.id) : null)
         const title = session?.title?.trim() || session?.preview?.trim() || (active ? currentTitle?.trim() : null) || 'Untitled conversation'
         return (
           <div
@@ -50,10 +56,21 @@ export function DesktopSessionTabs({
             }}
           >
             <button className="min-w-0 flex-1 truncate text-left" onClick={() => onSelect(id, session?.profile)} title={title} type="button">
-              {title}
+              <span className="flex min-w-0 items-center gap-1.5">
+                {active && sessionLoading ? (
+                  <Codicon name="loading" className="shrink-0 animate-spin text-[0.65rem] text-(--ui-accent)" />
+                ) : liveState === 'working' ? (
+                  <span className="size-1.5 shrink-0 rounded-full bg-(--ui-accent)" title={t.desktop.tabWorking} />
+                ) : liveState === 'needs-input' ? (
+                  <span className="size-1.5 shrink-0 rounded-full bg-(--ui-yellow)" title={t.desktop.tabNeedsInput} />
+                ) : session?.unread ? (
+                  <span className="size-1.5 shrink-0 rounded-full bg-(--ui-text-tertiary)" title={t.desktop.tabUnread} />
+                ) : null}
+                <span className="truncate">{title}</span>
+              </span>
             </button>
             <button
-              aria-label={`Close ${title}`}
+              aria-label={t.desktop.closeTab(title)}
               className="grid size-4 shrink-0 place-items-center rounded text-(--ui-text-quaternary) opacity-0 hover:bg-(--ui-bg-quaternary) hover:text-(--ui-text-primary) group-hover:opacity-100 focus:opacity-100"
               onClick={event => { event.stopPropagation(); onClose(id) }}
               type="button"
@@ -69,20 +86,20 @@ export function DesktopSessionTabs({
             <button
               className="rounded px-1.5 py-0.5 text-[0.625rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-text-primary)"
               onClick={() => onCloseOthers(activeSessionId)}
-              title="Close other tabs"
+              title={t.desktop.closeOtherTabs}
               type="button"
             >
-              Close others
+              {t.desktop.closeOtherTabs}
             </button>
           ) : null}
           {onCloseAll ? (
             <button
               className="rounded px-1.5 py-0.5 text-[0.625rem] text-(--ui-text-quaternary) hover:bg-(--chrome-action-hover) hover:text-(--ui-red)"
               onClick={onCloseAll}
-              title="Close all tabs"
+              title={t.desktop.closeAllTabs}
               type="button"
             >
-              Close all
+              {t.desktop.closeAllTabs}
             </button>
           ) : null}
         </div>

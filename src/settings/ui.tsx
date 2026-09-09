@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 
+import { Switch } from '@/ui/Switch'
 import { cn } from '@/ui/utils'
 
 import { CheckIcon, type IconComponent } from './icons'
@@ -32,24 +33,11 @@ export function Pill({ children }: { children: ReactNode }) {
 
 export function Toggle({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
   return (
-    <button
-      aria-checked={checked}
-      aria-role="switch"
-      className={cn(
-        'relative h-6 w-10 shrink-0 rounded-full p-0.5 transition-colors',
-        checked ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)',
-        disabled && 'opacity-40 pointer-events-none'
-      )}
-      onClick={() => onChange(!checked)}
-      type="button"
-    >
-      <span
-        className={cn(
-          'block size-5 rounded-full bg-white shadow-sm transition-transform',
-          checked ? 'translate-x-4' : 'translate-x-0'
-        )}
-      />
-    </button>
+    <Switch
+      checked={checked}
+      disabled={disabled}
+      onChange={onChange}
+    />
   )
 }
 

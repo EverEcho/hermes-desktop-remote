@@ -31,8 +31,11 @@ export function Switch({
       }}
       className={cn(
         'relative inline-flex shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ease-in-out select-none',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--theme-primary) focus-visible:ring-offset-2 focus-visible:ring-offset-(--ui-bg-card)',
         isSm ? 'h-5 w-9' : 'h-6 w-11',
-        checked ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)',
+        checked
+          ? 'bg-(--theme-primary)'
+          : 'bg-black/15 hover:bg-black/20 dark:bg-white/20 dark:hover:bg-white/25',
         disabled && 'opacity-40 cursor-not-allowed pointer-events-none',
         className
       )}
@@ -41,7 +44,7 @@ export function Switch({
       <span
         aria-hidden="true"
         className={cn(
-          'pointer-events-none block rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out',
+          'pointer-events-none block rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.25),0_1px_2px_rgba(0,0,0,0.12)] transition-transform duration-200 ease-in-out',
           isSm ? 'size-4' : 'size-5',
           checked
             ? isSm ? 'translate-x-4' : 'translate-x-5'

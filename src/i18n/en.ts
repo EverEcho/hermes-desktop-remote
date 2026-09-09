@@ -34,6 +34,14 @@ export const en = {
     showFileList: 'Show file list',
     hideFileList: 'Hide file list',
     openWorkspace: 'Open workspace',
+    resizeLeftSidebar: 'Resize left sidebar',
+    resizeRightSidebar: 'Resize right sidebar',
+    tabWorking: 'Working',
+    tabNeedsInput: 'Needs input',
+    tabUnread: 'Unread',
+    closeTab: (title: string) => `Close ${title}`,
+    closeOtherTabs: 'Close others',
+    closeAllTabs: 'Close all',
     gatewayConnected: 'Gateway connected',
     reconnectGateway: 'Reconnect gateway',
     refreshFiles: 'Refresh files',
@@ -216,8 +224,10 @@ export const en = {
   },
   session: {
     emptyHint: 'Start with a goal',
+    loadingConversation: 'Loading conversation…',
     thinking: 'Thinking…',
     loadEarlier: 'Show earlier messages',
+    scrollToLatest: 'Scroll to latest message',
     retrySend: 'Retry send',
     editMessage: 'Edit message',
     saveAndSend: 'Save & resend',
@@ -792,6 +802,46 @@ export const en = {
       file: 'file',
       image: 'image',
       link: 'link'
+    }
+  },
+  webhooks: {
+    title: 'Webhooks',
+    description: 'Create authenticated inbound event routes on the connected Gateway.',
+    enableReceiver: 'Enable webhook receiver',
+    receiverRestartNotice: 'Webhook receiver was enabled. The Gateway may need a restart before it accepts events.',
+    secretNotice: 'Copy this secret now; it will not be shown again.',
+    done: 'Done',
+    newSubscription: 'New subscription',
+    namePlaceholder: 'Name',
+    descriptionPlaceholder: 'Description (optional)',
+    eventsPlaceholder: 'Events, comma separated (optional)',
+    skillsPlaceholder: 'Skills, comma separated (optional)',
+    promptPlaceholder: 'Prompt (optional)',
+    deliverOnly: 'Deliver only',
+    createWebhook: 'Create webhook',
+    subscriptions: 'Subscriptions',
+    refresh: 'Refresh',
+    loading: 'Loading webhooks…',
+    noSubscriptions: 'No subscriptions yet',
+    disable: 'Disable',
+    enable: 'Enable',
+    delete: 'Delete',
+    deleteConfirm: (name: string) => `Delete webhook “${name}”?`,
+    allEvents: 'all events',
+    deliveryLabels: {
+      log: 'Log',
+      telegram: 'Telegram',
+      discord: 'Discord',
+      slack: 'Slack',
+      email: 'Email',
+      github_comment: 'GitHub Comment'
+    },
+    errors: {
+      loadFailed: 'Unable to load webhooks',
+      enableFailed: 'Unable to enable webhooks',
+      createFailed: 'Unable to create webhook',
+      updateFailed: 'Unable to update webhook',
+      deleteFailed: 'Unable to delete webhook'
     }
   }
 }

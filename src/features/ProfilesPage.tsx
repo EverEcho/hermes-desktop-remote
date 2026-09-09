@@ -7,6 +7,7 @@ import { refreshProfiles } from '@/store/profiles'
 import type { ProfileInfo } from '@/types/hermes'
 import { Button } from '@/ui/Button'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
+import { Switch } from '@/ui/Switch'
 import { useI18n } from '@/i18n'
 
 interface ProfilesPageProps {
@@ -177,7 +178,15 @@ export function ProfilesPage({ onClose, open }: ProfilesPageProps) {
             <option value="">{p.startEmpty}</option>
             {profiles.map(profile => <option key={profile.name} value={profile.name}>{p.cloneFrom(profile.display_name || profile.name)}</option>)}
           </select>
-          <label className="flex items-center gap-2 rounded-md border border-(--ui-stroke-tertiary) px-2.5 text-xs text-(--ui-text-secondary)"><input checked={withoutSkills} disabled={working} onChange={event => setWithoutSkills(event.target.checked)} type="checkbox" />{p.noSkills}</label>
+          <label className="flex items-center justify-between rounded-md border border-(--ui-stroke-tertiary) bg-(--ui-bg-card) px-2.5 py-1.5 text-xs text-(--ui-text-secondary) cursor-pointer select-none">
+            <span>{p.noSkills}</span>
+            <Switch
+              checked={withoutSkills}
+              disabled={working}
+              onChange={setWithoutSkills}
+              size="sm"
+            />
+          </label>
         </div>
         {error ? <div className="rounded-md bg-(--ui-red)/10 px-2.5 py-2 text-xs text-(--ui-red)">{error}</div> : null}
         <div className="overflow-hidden rounded-lg border border-(--ui-stroke-tertiary)">

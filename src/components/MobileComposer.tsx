@@ -22,8 +22,10 @@ import {
 import { getDraft, setDraft } from '@/sessions/drafts'
 import type { ModelOptionProvider } from '@/types/hermes'
 import { Codicon } from '@/ui/Codicon'
+import { Switch } from '@/ui/Switch'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
+import { useAppSurface } from '@/bootstrap/surface-context'
 
 interface MobileComposerProps {
   busy: boolean
@@ -128,6 +130,7 @@ interface SpeechRecognitionLike {
 
 export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   const { t } = useI18n()
+  const surface = useAppSurface()
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [showModelPicker, setShowModelPicker] = useState(false)
@@ -175,7 +178,11 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [activeSessionId])
+
+    if (surface === 'desktop') {
+      window.setTimeout(() => textareaRef.current?.focus(), 0)
+    }
+  }, [activeSessionId, surface])
 
   useEffect(() => {
     if (!activeSessionId) return
@@ -376,6 +383,8 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
+
     const isSlashOpen = slashItems.length > 0
     const isPathOpen = pathItems.length > 0
 
@@ -417,7 +426,11 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
       }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    const shouldSubmit = surface === 'desktop'
+      ? e.key === 'Enter' && !e.shiftKey
+      : e.key === 'Enter' && (e.metaKey || e.ctrlKey)
+
+    if (shouldSubmit) {
       e.preventDefault()
       if (busy && !canSteer && canQueue) handleQueue()
       else handleSend()
@@ -891,21 +904,11 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
                   <span className="text-[0.65rem] font-semibold text-(--ui-text-quaternary) uppercase tracking-wider">
                     {t.composer.fast}
                   </span>
-                  <button
-                    type="button"
-                    onClick={toggleFast}
-                    className={cn(
-                      'relative h-5 w-9 shrink-0 rounded-full transition-colors',
-                      fastOn ? 'bg-(--theme-primary)' : 'bg-(--ui-bg-quaternary)'
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-transform',
-                        fastOn ? 'translate-x-[18px]' : 'translate-x-0.5'
-                      )}
-                    />
-                  </button>
+                  <Switch
+                    checked={fastOn}
+                    onChange={toggleFast}
+                    size="sm"
+                  />
                 </div>
               )}
 
@@ -1028,4 +1031,3 @@ export function MobileComposer({ busy, onStop }: MobileComposerProps) {
   </div>
 )
 }
-

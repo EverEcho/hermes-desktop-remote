@@ -28,6 +28,13 @@ const appSurface = resolveAppSurface({
 })
 document.documentElement.dataset.surface = appSurface
 
+const isStandalone =
+  (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
+  window.matchMedia('(display-mode: standalone)').matches
+if (isStandalone) {
+  document.documentElement.dataset.standalone = 'true'
+}
+
 if (runtimePlatform === 'tauri') {
   document.documentElement.dataset.desktopOs = /Macintosh|Mac OS X/i.test(navigator.userAgent)
     ? 'macos'

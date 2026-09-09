@@ -38,15 +38,31 @@ import { DesktopCommandPalette, type DesktopCommand } from '@/desktop/CommandPal
 import { DesktopSessionPicker } from '@/desktop/SessionPicker'
 import { DesktopSessionTabs } from '@/desktop/SessionTabs'
 import { DesktopStatusBar } from '@/desktop/DesktopStatusBar'
+import { clampPanelWidth, ResizableDivider } from '@/desktop/ResizableDivider'
 import { openExternalUrl } from '@/native'
 import type { AppSurface } from '@/bootstrap/runtime'
 
 const LEFT_SIDEBAR_KEY = 'rhermes.desktop.left-sidebar'
 const RIGHT_SIDEBAR_KEY = 'rhermes.desktop.right-sidebar'
+const LEFT_SIDEBAR_WIDTH_KEY = 'rhermes.desktop.left-sidebar-width'
+const RIGHT_SIDEBAR_WIDTH_KEY = 'rhermes.desktop.right-sidebar-width'
+const LEFT_SIDEBAR_DEFAULT_WIDTH = 237
+const LEFT_SIDEBAR_MIN_WIDTH = 180
+const LEFT_SIDEBAR_MAX_WIDTH = 360
+const RIGHT_SIDEBAR_DEFAULT_WIDTH = 237
+const RIGHT_SIDEBAR_MIN_WIDTH = 160
+const RIGHT_SIDEBAR_MAX_WIDTH = 420
+const CHAT_MIN_WIDTH = 360
+const DIVIDER_WIDTH = 5
 
 function loadPanelPreference(key: string, fallback: boolean): boolean {
   const saved = window.localStorage.getItem(key)
   return saved === null ? fallback : saved === 'true'
+}
+
+function loadPanelWidth(key: string, fallback: number, min: number, max: number): number {
+  const saved = Number(window.localStorage.getItem(key))
+  return Number.isFinite(saved) && saved > 0 ? clampPanelWidth(saved, min, max) : fallback
 }
 
 export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => void; surface: AppSurface }) {
@@ -91,6 +107,14 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(() => loadPanelPreference(LEFT_SIDEBAR_KEY, true))
   const [rightSidebarVisible, setRightSidebarVisible] = useState(() => loadPanelPreference(RIGHT_SIDEBAR_KEY, true))
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(() =>
+    loadPanelWidth(LEFT_SIDEBAR_WIDTH_KEY, LEFT_SIDEBAR_DEFAULT_WIDTH, LEFT_SIDEBAR_MIN_WIDTH, LEFT_SIDEBAR_MAX_WIDTH)
+  )
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(() =>
+    loadPanelWidth(RIGHT_SIDEBAR_WIDTH_KEY, RIGHT_SIDEBAR_DEFAULT_WIDTH, RIGHT_SIDEBAR_MIN_WIDTH, RIGHT_SIDEBAR_MAX_WIDTH)
+  )
+  const [workspaceWidth, setWorkspaceWidth] = useState(() => window.innerWidth)
+  const workspaceRowRef = useRef<HTMLDivElement>(null)
   const [desktopPreviewTarget, setDesktopPreviewTarget] = useState<RemotePreviewTarget | null>(null)
   const isDesktopSurface = surface === 'desktop'
   const connectionState = useStore($connectionState)
@@ -127,6 +151,56 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   useEffect(() => {
     window.localStorage.setItem(RIGHT_SIDEBAR_KEY, String(rightSidebarVisible))
   }, [rightSidebarVisible])
+
+  useEffect(() => {
+    window.localStorage.setItem(LEFT_SIDEBAR_WIDTH_KEY, String(leftSidebarWidth))
+  }, [leftSidebarWidth])
+
+  useEffect(() => {
+    window.localStorage.setItem(RIGHT_SIDEBAR_WIDTH_KEY, String(rightSidebarWidth))
+  }, [rightSidebarWidth])
+
+  useEffect(() => {
+    if (!isDesktopSurface || !workspaceRowRef.current) return
+    const row = workspaceRowRef.current
+    const updateWidth = () => setWorkspaceWidth(row.getBoundingClientRect().width)
+    updateWidth()
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [isDesktopSurface])
+
+  const rightPanelOpen = isDesktopSurface && rightSidebarVisible && Boolean(currentCwd)
+  const dividerCount = Number(leftSidebarVisible) + Number(rightPanelOpen)
+  const panelBudget = Math.max(0, workspaceWidth - CHAT_MIN_WIDTH - dividerCount * DIVIDER_WIDTH)
+  const effectiveLeftSidebarWidth = leftSidebarVisible
+    ? clampPanelWidth(
+        leftSidebarWidth,
+        LEFT_SIDEBAR_MIN_WIDTH,
+        Math.min(LEFT_SIDEBAR_MAX_WIDTH, panelBudget - (rightPanelOpen ? RIGHT_SIDEBAR_MIN_WIDTH : 0))
+      )
+    : 0
+  const effectiveRightSidebarWidth = rightPanelOpen
+    ? clampPanelWidth(
+        rightSidebarWidth,
+        RIGHT_SIDEBAR_MIN_WIDTH,
+        Math.min(RIGHT_SIDEBAR_MAX_WIDTH, panelBudget - effectiveLeftSidebarWidth)
+      )
+    : 0
+  const leftPanelMax = Math.max(
+    LEFT_SIDEBAR_MIN_WIDTH,
+    Math.min(
+      LEFT_SIDEBAR_MAX_WIDTH,
+      panelBudget - effectiveRightSidebarWidth
+    )
+  )
+  const rightPanelMax = Math.max(
+    RIGHT_SIDEBAR_MIN_WIDTH,
+    Math.min(
+      RIGHT_SIDEBAR_MAX_WIDTH,
+      panelBudget - effectiveLeftSidebarWidth
+    )
+  )
 
   useEffect(() => {
     api.setGatewaySessionSource(isDesktopSurface ? 'desktop' : 'mobile')
@@ -370,7 +444,7 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
   }, [isDesktopSurface])
 
   return (
-    <div className="h-full h-dvh flex flex-col bg-(--ui-bg-chrome) overflow-hidden">
+    <div className="app-shell h-full flex flex-col bg-(--ui-bg-chrome) overflow-hidden">
       {isDesktopSurface ? (
         <DesktopTitlebar
           connectionState={connectionState}
@@ -387,9 +461,12 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
       ) : null}
 
       {/* 主工作区（上层平面：包含左侧栏、中间内容、右侧工作台） */}
-      <div className="flex min-h-0 flex-1 w-full overflow-hidden">
+      <div className="flex min-h-0 flex-1 w-full overflow-hidden" ref={workspaceRowRef}>
         {/* Desktop Sidebar (hidden on mobile) */}
-        <div className={leftSidebarVisible ? (isDesktopSurface ? 'flex shrink-0' : 'hidden md:flex shrink-0') : 'hidden'}>
+        <div
+          className={leftSidebarVisible ? (isDesktopSurface ? 'flex shrink-0' : 'hidden md:flex shrink-0') : 'hidden'}
+          style={isDesktopSurface ? { width: effectiveLeftSidebarWidth } : undefined}
+        >
         <Sidebar
           sessions={sessions}
           cronSessions={cronSessions}
@@ -409,6 +486,18 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
           onFeature={handleFeature}
         />
       </div>
+
+      {isDesktopSurface && leftSidebarVisible ? (
+        <ResizableDivider
+          ariaLabel={t.desktop.resizeLeftSidebar}
+          defaultWidth={LEFT_SIDEBAR_DEFAULT_WIDTH}
+          max={leftPanelMax}
+          min={LEFT_SIDEBAR_MIN_WIDTH}
+          onResize={setLeftSidebarWidth}
+          side="left"
+          width={effectiveLeftSidebarWidth}
+        />
+      ) : null}
 
       <div className="flex min-w-0 min-h-0 flex-1 flex-col h-full overflow-hidden">
         <MobileHeader
@@ -544,16 +633,29 @@ export function AppShell({ onChangeGateway, surface }: { onChangeGateway: () => 
       ) : null}
       </div>
 
-      {isDesktopSurface && rightSidebarVisible && currentCwd ? (
-          <DesktopWorkspacePanel
-            cwd={currentCwd}
-            externalPreview={desktopPreviewTarget}
-            onClose={() => setRightSidebarVisible(false)}
-            onOpenTerminal={() => setTerminalOpen(true)}
-            onOpenWorkspace={() => setWorkspaceOpen(true)}
-            onPreviewConsumed={() => setDesktopPreviewTarget(null)}
+      {rightPanelOpen && currentCwd ? (
+        <>
+          <ResizableDivider
+            ariaLabel={t.desktop.resizeRightSidebar}
+            defaultWidth={RIGHT_SIDEBAR_DEFAULT_WIDTH}
+            max={rightPanelMax}
+            min={RIGHT_SIDEBAR_MIN_WIDTH}
+            onResize={setRightSidebarWidth}
+            side="right"
+            width={effectiveRightSidebarWidth}
           />
-        ) : null}
+          <div className="flex min-h-0 shrink-0" style={{ width: effectiveRightSidebarWidth }}>
+            <DesktopWorkspacePanel
+              cwd={currentCwd}
+              externalPreview={desktopPreviewTarget}
+              onClose={() => setRightSidebarVisible(false)}
+              onOpenTerminal={() => setTerminalOpen(true)}
+              onOpenWorkspace={() => setWorkspaceOpen(true)}
+              onPreviewConsumed={() => setDesktopPreviewTarget(null)}
+            />
+          </div>
+        </>
+      ) : null}
       </div>
 
       {/* 底部通栏状态栏（下层平面：横跨整屏宽度，left / content / right 在同一个水平基准面） */}

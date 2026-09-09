@@ -27,4 +27,12 @@ describe('i18n localization coverage', () => {
       expect(value.trim().length).toBeGreaterThan(0)
     }
   })
+
+  it('has identical keys for webhooks in both en and zh', () => {
+    const enWebhooksKeys = Object.keys(en.webhooks).sort()
+    const zhWebhooksKeys = Object.keys(zh.webhooks).sort()
+    expect(enWebhooksKeys).toEqual(zhWebhooksKeys)
+    expect(Object.keys(en.webhooks.errors).sort()).toEqual(Object.keys(zh.webhooks.errors).sort())
+    expect(Object.keys(en.webhooks.deliveryLabels).sort()).toEqual(Object.keys(zh.webhooks.deliveryLabels).sort())
+  })
 })

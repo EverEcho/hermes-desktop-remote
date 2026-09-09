@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import * as api from '@/gateway/api'
-import type { FsListEntry, GitStatusResponse } from '@/types/hermes'
+import type { FsListEntry } from '@/types/hermes'
 import { Codicon } from '@/ui/Codicon'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
+import { normalizeGitStatus, type WorkspaceGitStatus } from '@/workspace/git-status'
 
 interface DesktopWorkspacePanelProps {
   cwd: string
@@ -55,16 +56,6 @@ function isPdf(path: string) {
 
 function needsDataUrl(path: string) {
   return isImage(path) || isPdf(path)
-}
-
-function normalizeGitStatus(raw: GitStatusResponse | null): GitStatusResponse | null {
-  if (!raw) return null
-  return {
-    ...raw,
-    staged: raw.staged ?? [],
-    modified: raw.modified ?? [],
-    untracked: raw.untracked ?? []
-  }
 }
 
 /** A deliberately small Markdown reader. It never injects remote HTML into the
@@ -124,7 +115,9 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const [gitStatus, setGitStatus] = useState<GitStatusResponse | null>(null)
+  const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus | null>(null)
+  const [gitLoading, setGitLoading] = useState(false)
+  const [gitLoadError, setGitLoadError] = useState<string | null>(null)
   const [gitWorking, setGitWorking] = useState<string | null>(null)
   const [gitError, setGitError] = useState<string | null>(null)
   const [commitMessage, setCommitMessage] = useState('')
@@ -132,11 +125,16 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
   const rootName = useMemo(() => cwd.split('/').filter(Boolean).pop() || cwd, [cwd])
 
   const refreshGit = useCallback(async () => {
+    setGitLoading(true)
+    setGitLoadError(null)
     try {
       const res = await api.gitStatus(cwd)
       setGitStatus(normalizeGitStatus(res))
-    } catch {
+    } catch (error) {
       setGitStatus(null)
+      setGitLoadError(error instanceof Error ? error.message : 'Unable to load Git status')
+    } finally {
+      setGitLoading(false)
     }
   }, [cwd])
 
@@ -293,7 +291,7 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
     }
   }
 
-  const totalChanges = (gitStatus?.staged.length ?? 0) + (gitStatus?.modified.length ?? 0) + (gitStatus?.untracked.length ?? 0)
+  const totalChanges = gitStatus?.changed ?? 0
 
   return (
     <aside className="desktop-workspace-panel">
@@ -333,7 +331,7 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
           type="button"
         >
           <Codicon name="list-tree" />
-          <span className="truncate">Files</span>
+          <span className="truncate">{t.workspace.files}</span>
         </button>
         <button
           aria-selected={viewMode === 'changes'}
@@ -347,7 +345,7 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
           type="button"
         >
           <Codicon name="git-branch" />
-          <span className="truncate">Changes {totalChanges > 0 ? `(${totalChanges})` : ''}</span>
+          <span className="truncate">{t.workspace.changes} {totalChanges > 0 ? `(${totalChanges})` : ''}</span>
         </button>
         {tabs.map(tab => (
           <div className={cn('desktop-preview-tab', viewMode === 'preview' && activeTabId === tab.id && 'is-active')} key={tab.id} role="presentation">
@@ -424,10 +422,21 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
         </div>
       ) : viewMode === 'changes' ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-2 space-y-3 no-scrollbar text-xs">
+          {gitLoading && !gitStatus ? (
+            <div className="p-2 text-xs text-(--ui-text-quaternary)">{t.common.loading}</div>
+          ) : gitLoadError ? (
+            <div className="rounded bg-(--ui-red)/10 p-2 text-xs text-(--ui-red)">
+              <div>{gitLoadError}</div>
+              <button className="mt-1 text-(--ui-accent)" onClick={() => void refreshGit()} type="button">{t.common.retry}</button>
+            </div>
+          ) : !gitStatus ? (
+            <div className="p-2 text-xs text-(--ui-text-quaternary)">{t.workspace.noRepo}</div>
+          ) : null}
+          {gitStatus ? <>
           <div className="flex items-center justify-between border-b border-(--ui-stroke-tertiary) pb-2">
             <div className="flex items-center gap-1.5 font-mono text-xs text-(--ui-text-primary)">
               <Codicon name="git-branch" className="text-(--ui-accent)" />
-              <span>{gitStatus?.branch || 'main'}</span>
+              <span>{gitStatus?.branch || 'HEAD'}</span>
             </div>
             <button
               className="rounded px-2 py-0.5 text-xs text-(--ui-accent) hover:bg-(--chrome-action-hover) disabled:opacity-40"
@@ -541,6 +550,7 @@ export function DesktopWorkspacePanel({ cwd, externalPreview, onClose, onOpenWor
               </button>
             </div>
           )}
+          </> : null}
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1 no-scrollbar">

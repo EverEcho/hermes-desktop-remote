@@ -58,7 +58,7 @@ export function MobileSheet({ open, onClose, title, children, fullScreen }: Mobi
       <div
         className={cn(
           'relative flex flex-col overflow-hidden',
-          'rounded-t-xl border border-(--stroke-nous) shadow-(--shadow-nous)',
+          'rounded-t-xl border-x border-t border-(--stroke-nous) shadow-(--shadow-nous)',
           'bg-(--ui-bg-elevated)',
           'transition-transform duration-150 ease-out',
           fullScreen ? 'h-[94vh] max-h-[94vh]' : 'max-h-[85vh]'

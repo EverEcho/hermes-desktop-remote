@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 
 import * as api from '@/gateway/api'
-import type { FsListEntry, GitStatusResponse } from '@/types/hermes'
+import type { FsListEntry } from '@/types/hermes'
 import { ResponsiveSheet } from '@/ui/ResponsiveSheet'
 import { cn } from '@/ui/utils'
 import { useI18n } from '@/i18n'
+import { normalizeGitStatus, type WorkspaceGitStatus } from '@/workspace/git-status'
 
 interface WorkspaceSheetProps {
   open: boolean
@@ -21,23 +22,12 @@ function previewKind(path: string): FilePreview['kind'] {
   return 'text'
 }
 
-/* Older/remote backends can omit the list fields entirely — coerce at the
- * boundary so the render never reads `.length` off undefined. */
-function normalizeGitStatus(status: GitStatusResponse): GitStatusResponse {
-  return {
-    branch: status.branch ?? '',
-    modified: status.modified ?? [],
-    staged: status.staged ?? [],
-    untracked: status.untracked ?? []
-  }
-}
-
 export function WorkspaceSheet({ open, onClose, cwd }: WorkspaceSheetProps) {
   const { t } = useI18n()
   const [tab, setTab] = useState<Tab>('files')
   const [entries, setEntries] = useState<FsListEntry[]>([])
   const [currentPath, setCurrentPath] = useState(cwd ?? '')
-  const [gitStatus, setGitStatus] = useState<GitStatusResponse | null>(null)
+  const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [fileContent, setFileContent] = useState<FilePreview | null>(null)
   const [gitWorking, setGitWorking] = useState<string | null>(null)
